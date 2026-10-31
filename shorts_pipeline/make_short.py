@@ -85,7 +85,7 @@ def main(spec_path):
     for i, s in enumerate(segs):
         inputs += ["-i", str(s["wav"])]
         fc += f"[{i}:a]apad=whole_dur={s['dur']:.3f}[a{i}];"
-    fc += "".join(f"[a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1,loudnorm=I=-14:TP=-1.5[a]"
+    fc += "".join(f"[a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1,loudnorm=I=-14:TP=-1.5,aresample=48000[a]"
     voz = work / "voz.wav"
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-filter_complex", fc, "-map", "[a]", str(voz)])
 
@@ -153,7 +153,7 @@ def main(spec_path):
     out.parent.mkdir(parents=True, exist_ok=True)
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-i", str(voz), "-filter_complex", fc,
          "-map", "[vout]", "-map", f"{len(clips)}:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-         "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out)])
+         "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart", str(out)])
     print(f"OK {out} ({t:.1f} s)")
 
 
