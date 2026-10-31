@@ -153,6 +153,7 @@ def main(spec_path):
     out.parent.mkdir(parents=True, exist_ok=True)
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-i", str(voz), "-filter_complex", fc,
          "-map", "[vout]", "-map", f"{len(clips)}:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+         "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart", str(out)])
     print(f"OK {out} ({t:.1f} s)")
 
