@@ -1,0 +1,12 @@
+{"out":"por_que_casi_nadie_se_hace_rico_9x16.mp4","lines":[
+{"text":"Hay un motivo por el que casi nadie se hace rico. Y no es el sueldo.","scene":"think","bubble":"$ ?","size":150},
+{"text":"Dos personas. El mismo sueldo.","scene":"split","top":{"scene":"stand","label":"EL RESTO"},"bottom":{"scene":"stand","label":"TÚ","gold":true}},
+{"text":"El primero gasta en lo que se ve. Y vive pegado al móvil.","scene":"phone","label":"EL RESTO"},
+{"text":"Cada mañana, cansado. Cada mes, a cero.","scene":"sleep","alarm":true,"label":"EL RESTO"},
+{"text":"El segundo se queda una hora más. Aprende algo que vale dinero.","scene":"work","label":"TÚ"},
+{"text":"Lee cuando nadie mira.","scene":"read","label":"TÚ"},
+{"text":"Durante meses, no pasa nada. Nadie lo ve.","scene":"push"},
+{"text":"Y un día, todo se acelera.","scene":"graph","y":"RESULTADOS","flat_label":"EL RESTO"},
+{"text":"No es suerte. Es lo aburrido, repetido cada día.","scene":"climb"},
+{"text":"Ellos lo llamarán suerte. Tú sabrás el precio.","scene":"money"},
+{"text":"Esta noche, ¿cuál de los dos eres?","scene":"crowd"}]}

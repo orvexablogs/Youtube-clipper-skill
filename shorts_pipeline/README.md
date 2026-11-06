@@ -38,3 +38,18 @@ python3 make_short.py spec.json
 
 18:37 hora de Ciudad de México (19:37 en Nueva York): la subida queda procesada justo antes del
 pico de uso de 19:00–22:00 en México, Centroamérica y el público hispano de EE. UU.
+
+## Shorts de monigotes (stickman)
+
+`stickman_short.py` dibuja con código escenas animadas de monigotes (sin fotos ni licencias),
+con la misma voz, los subtítulos palabra a palabra y un "whoosh" suave en cada corte.
+Necesita Pillow y numpy además de lo anterior.
+
+```bash
+python3 stickman_short.py ejemplo_stickman.json     # vídeo completo
+python3 stickman_short.py --preview carpeta/         # un fotograma de cada escena
+```
+
+Escenas: `stand`, `walk`, `sad`, `run`, `sleep`, `phone`, `think`, `climb`, `lift`, `work`,
+`money`, `push`, `read`, `crowd`, `graph`, `clock` y `split` (dos paneles con `top`/`bottom`).
+Opciones por línea: `label`, `face`, `gold`, `bubble`, `alarm`, `zoom`… (ver la cabecera del script).
