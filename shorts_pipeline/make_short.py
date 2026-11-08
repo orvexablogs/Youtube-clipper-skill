@@ -130,9 +130,10 @@ def main(spec_path):
             cur = []
     if cur:
         chunks.append(cur)
-    for ch in chunks:
+    for ci, ch in enumerate(chunks):
+        nxt = chunks[ci + 1][0][0] if ci + 1 < len(chunks) else 1e9
         for k, (s, e, _) in enumerate(ch):
-            end = ch[k + 1][0] if k + 1 < len(ch) else e + 0.05
+            end = ch[k + 1][0] if k + 1 < len(ch) else min(e + 0.05, nxt)
             txt = " ".join(("{\\c&H00D7FF&}" + x[2].upper() + "{\\c&HFFFFFF&}") if j == k else x[2].upper()
                            for j, x in enumerate(ch))
             pop = "{\\fscx112\\fscy112\\t(0,90,\\fscx100\\fscy100)}" if k == 0 else ""
