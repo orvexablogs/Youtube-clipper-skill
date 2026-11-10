@@ -479,7 +479,8 @@ def scene_money(cv, t, D, o):
         coin(cv, (x, y), 32, rot=(t - t0) * 9 + i)
     j = abs(math.sin(t * 3.2)) * 40
     J = figure(cv, (540, 0), dict(aL1=-150, aL2=-165, aR1=150, aR2=165, lL1=-12, lR1=12),
-               face=o.get("face", "happy"), facing=0, ground=GROUND - j, col=fig_col(o) or C["gold"])
+               face=o.get("face", "happy"), facing=0, ground=GROUND - j,
+           col=None if o.get("gold") is False else C["gold"])
 
 
 def scene_push(cv, t, D, o):
