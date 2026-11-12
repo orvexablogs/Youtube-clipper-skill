@@ -11,6 +11,7 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
+  "rate": "+8%", "pitch": "-3Hz",         (opcional; velocidad y tono de la voz)
   "tts": "flow" | "lines",                 (opcional; flow = todo el guion en una toma, con
                                            silencios recortados y tiempos reales por palabra)
   "theme": "light" | "dark" | "8bit" | "mg" | "pixel" | "toon",  (opcional; mg = motion graphics,
@@ -1193,7 +1194,7 @@ def norm(w):
     return re.sub(r"[^\w]", "", w).lower()
 
 
-def narrate_flow(lines, voice, work):
+def narrate_flow(lines, voice, work, rate="+8%", pitch="-3Hz"):
     """Narra el guion entero en una sola toma (entonación y ritmo naturales entre frases)
     y usa los tiempos reales de cada palabra para cortar escenas y sincronizar subtítulos."""
     import shutil
@@ -1201,7 +1202,7 @@ def narrate_flow(lines, voice, work):
     txt.write_text(" ".join(ln["text"].strip() for ln in lines), encoding="utf-8")
     exe = shutil.which("edge-tts")
     py = str(Path(exe).resolve().parent / "python") if exe else sys.executable
-    run([py, str(HERE / "tts_words.py"), str(txt), voice, str(mp3), str(js), "+8%", "-3Hz"], capture_output=True)
+    run([py, str(HERE / "tts_words.py"), str(txt), voice, str(mp3), str(js), rate, pitch], capture_output=True)
     bnd = json.loads(js.read_text(encoding="utf-8"))
     # recortar los silencios largos entre frases para un ritmo continuo de Short
     sr = 48000
@@ -1306,7 +1307,7 @@ def main(spec_path):
     lines = spec["lines"]
 
     if spec.get("tts", "flow") == "flow":
-        segs, words, total, voz = narrate_flow(lines, voice, work)
+        segs, words, total, voz = narrate_flow(lines, voice, work, spec.get("rate", "+8%"), spec.get("pitch", "-3Hz"))
     else:
         segs, words, total, voz = narrate_lines(lines, voice, work)
     with wave.open(str(voz)) as wf:
