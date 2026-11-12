@@ -11,7 +11,7 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
-  "theme": "light" | "dark" | "8bit",     (opcional, light = papel crema; 8bit = videojuego retro)
+  "theme": "light" | "dark" | "8bit" | "mg",  (opcional; mg = motion graphics oscuro)
   "lines": [
     {"text": "Las seis de la mañana.", "scene": "sleep", "alarm": true},
     {"text": "Uno se levanta.", "scene": "split",
@@ -20,8 +20,12 @@ spec.json:
   ]
 }
 
-Escenas: stand, walk, sad, run, sleep, phone, think, climb, lift, work,
-money, push, read, crowd, graph, clock, split.  Opciones comunes por línea:
+Escenas con monigote: stand, walk, sad, run, sleep, phone, think, climb, lift,
+work, money, push, read, crowd, graph, clock, split.
+Escenas de motion graphics sin personajes (tema "mg"): title (texto grande palabra
+a palabra, *dorado*), icons (emojis con rótulo, strike/check), versus (EL RESTO / TÚ
+con barras), chart (gráfica con área), flow (pasos con flechas), drain (algo que se
+vacía, bar_label) y question (gran interrogación).  Opciones comunes por línea:
 "label" (cartel arriba), "hook" (texto gancho de 2-4 palabras en grande durante
 los primeros 2,4 s; ponlo en la primera línea, nunca repite palabras del título), "face" (happy, sad, neutral, determined, tired,
 shock), "gold" (monigote dorado).  Ver cada función scene_* para el resto.
@@ -50,6 +54,9 @@ GROUND = 1360
 THEMES = {
     "light": dict(bg=(245, 241, 232), ink=(22, 22, 24), gold=(214, 160, 30), grey=(160, 158, 152),
                   red=(205, 60, 50), soft=(225, 219, 205), glow=(255, 236, 160), box=(22, 22, 24)),
+    # Motion graphics sin personajes: fondo casi negro con rejilla, oro y blanco.
+    "mg": dict(bg=(13, 13, 17), ink=(246, 243, 236), gold=(236, 191, 88), grey=(128, 128, 140),
+               red=(232, 72, 72), soft=(28, 28, 36), glow=(70, 60, 30), box=(0, 0, 0), grid=(22, 22, 29)),
     "dark": dict(bg=(16, 16, 19), ink=(238, 236, 230), gold=(232, 197, 120), grey=(95, 95, 100),
                  red=(225, 80, 70), soft=(40, 40, 46), glow=(90, 80, 40), box=(0, 0, 0)),
     # Estilo videojuego de 8 bits: paleta fija de 16 colores, píxeles de 6x6, letra pixel,
@@ -605,6 +612,234 @@ def scene_clock(cv, t, D, o):
            ground=GROUND, col=fig_col(o))
 
 
+# ---------------------------------------------------------------- motion graphics (sin personajes)
+EMOJI_FONT = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+_emoji = {}
+
+
+def back(x):
+    """Entrada con rebote (sobrepasa un poco y vuelve)."""
+    x = max(0.0, min(1.0, x))
+    c = 1.70158
+    return 1 + (c + 1) * (x - 1) ** 3 + c * (x - 1) ** 2
+
+
+def pop(t, delay=0.0, dur=0.32):
+    return back((t - delay) / dur) if t > delay else 0.0
+
+
+def emoji(cv, ch, c, size, k=1.0, alpha=1.0):
+    """Pega un emoji a color (Noto Color Emoji) centrado en c, con escala k y opacidad."""
+    if k <= 0.01 or alpha <= 0.01:
+        return
+    if ch not in _emoji:
+        f = ImageFont.truetype(EMOJI_FONT, 109)
+        im = Image.new("RGBA", (160, 160))
+        ImageDraw.Draw(im).text((8, 8), ch, font=f, embedded_color=True)
+        _emoji[ch] = im.crop(im.getbbox() or (0, 0, 160, 160))
+    src = _emoji[ch]
+    px = max(2, int(size * k * cv.z * SS))
+    im = src.resize((px, int(px * src.height / src.width)), Image.LANCZOS)
+    if alpha < 1:
+        a = im.getchannel("A").point(lambda v: int(v * alpha))
+        im.putalpha(a)
+    x, y = cv.P(c)
+    cv.img.paste(im, (int(x - im.width / 2), int(y - im.height / 2)), im)
+
+
+def rich_lines(txt, size, maxw=900):
+    """Parte un texto en líneas; las palabras entre *asteriscos* van en dorado."""
+    words, gold = [], False
+    for w in txt.replace("\n", " \n ").split(" "):
+        if not w:
+            continue
+        start = w.startswith("*")
+        if start:
+            gold = True
+        words.append((w.replace("*", ""), gold))
+        if w.rstrip(".,:;?!").endswith("*"):
+            gold = False
+    lines, cur = [], []
+    for w, g in words:
+        if w == "\n":
+            lines.append(cur)
+            cur = []
+            continue
+        test = " ".join(x for x, _ in cur + [(w, g)])
+        if cur and font(size * SS).getlength(test.upper()) / SS > maxw:
+            lines.append(cur)
+            cur = []
+        cur.append((w, g))
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def kinetic(cv, txt, t, y, size=140, step=0.11, maxw=900):
+    """Texto grande que entra palabra a palabra con rebote."""
+    lines = rich_lines(txt, size, maxw)
+    lh = size * 1.12
+    y0 = y - (len(lines) - 1) * lh / 2
+    n = 0
+    for li, ln in enumerate(lines):
+        widths = [font(size * SS).getlength(w.upper()) / SS for w, _ in ln]
+        sp = size * 0.28
+        x = 540 - (sum(widths) + sp * (len(ln) - 1)) / 2
+        for (w, g), wd in zip(ln, widths):
+            k = pop(t, n * step, 0.3)
+            if k > 0.02:
+                cv.text((x + wd / 2, y0 + li * lh), w.upper(), size * k, C["gold"] if g else C["ink"])
+            x += wd + sp
+            n += 1
+
+
+def mg_background(cv, t):
+    """Fondo oscuro con rejilla tenue y partículas doradas que flotan."""
+    for x in range(0, 1081, 90):
+        cv.line((x, 0), (x, 1920), 2, C["grid"])
+    for y in range(0, 1921, 90):
+        cv.line((0, y), (1080, y), 2, C["grid"])
+    rnd = random.Random(21)
+    for i in range(26):
+        x = rnd.uniform(0, 1080)
+        y = (rnd.uniform(0, 1920) - t * rnd.uniform(15, 45)) % 1920
+        r = rnd.uniform(2, 6)
+        cv.circle((x + 10 * math.sin(t + i), y), r, fill=mix(C["bg"], C["gold"], rnd.uniform(0.25, 0.6)))
+
+
+def scene_title(cv, t, D, o):
+    """Frase grande palabra a palabra. o: big (texto, *dorado*), icon (emoji opcional), size."""
+    y = 1000
+    if o.get("icon"):
+        emoji(cv, o["icon"], (540, 640), 260, pop(t, 0, 0.35))
+        y = 1060
+    kinetic(cv, o.get("big", o.get("text", "")), t, y, o.get("size", 130), step=o.get("step", 0.11))
+
+
+def scene_icons(cv, t, D, o):
+    """Iconos que aparecen uno a uno con su rótulo. o: items [[emoji, texto]...], strike/check."""
+    items = o.get("items", [])
+    n = len(items)
+    cols = 2 if n == 4 else n
+    rows = 2 if n == 4 else 1
+    for i, (ic, lab) in enumerate(items):
+        cx = 540 + ((i % cols) - (cols - 1) / 2) * (330 if cols == 3 else 440)
+        cy = 920 + ((i // cols) - (rows - 1) / 2) * 420
+        k = pop(t, 0.15 + i * o.get("step", 0.35))
+        cv.circle((cx, cy - 20), 135 * k, fill=C["soft"])
+        emoji(cv, ic, (cx, cy - 20), 190 if cols < 3 else 160, k)
+        if k > 0.5:
+            cv.text((cx, cy + 170), lab.upper(), 62, C["ink"])
+        end = 0.15 + n * o.get("step", 0.35) + 0.25 + i * 0.12
+        if o.get("strike") and t > end:
+            p = ease((t - end) / 0.2)
+            cv.line((cx - 120, cy - 140), (cx - 120 + 240 * p, cy - 140 + 240 * p), 16, C["red"])
+        if o.get("check") and t > end:
+            emoji(cv, "✅", (cx + 110, cy - 120), 90, pop(t, end))
+
+
+def scene_versus(cv, t, D, o):
+    """Comparación arriba/abajo. o: top/bottom = {label, icon, text, bar (0-1)}."""
+    for key, y0, col, delay in (("top", 470, C["grey"], 0.0), ("bottom", 990, C["gold"], 0.45)):
+        p = o.get(key, {})
+        k = ease((t - delay) / 0.35)
+        if k <= 0:
+            continue
+        x_off = (1 - k) * (-700 if key == "top" else 700)
+        cv.rect(70 + x_off, y0, 1010 + x_off, y0 + 460, fill=C["soft"], outline=col, w=6, rad=28)
+        cv.text((130 + x_off, y0 + 70), p.get("label", "").upper(), 64, col, anchor="lm")
+        emoji(cv, p.get("icon", "❔"), (230 + x_off, y0 + 245), 170, pop(t, delay + 0.15))
+        lines = rich_lines(p.get("text", ""), 58, 560)
+        for i, ln in enumerate(lines[:3]):
+            cv.text((370 + x_off, y0 + 190 + i * 66), " ".join(w for w, _ in ln).upper(), 58, C["ink"], anchor="lm")
+        if "bar" in p:
+            v = p["bar"] * ease((t - delay - 0.3) / 0.9)
+            cv.rect(130 + x_off, y0 + 375, 950 + x_off, y0 + 410, fill=C["grid"], rad=17)
+            if v > 0.01:
+                cv.rect(130 + x_off, y0 + 375, 130 + 820 * v + x_off, y0 + 410, fill=col, rad=17)
+
+
+def scene_chart(cv, t, D, o):
+    """Gráfica animada con área. o: y, x (rótulos), flat_label, end_label."""
+    x0, y0, x1, y1 = 150, 1360, 960, 560
+    cv.path([(x0, y1 - 40), (x0, y0), (x1 + 40, y0)], 6, C["grey"])
+    cv.text(((x0 + x1) / 2, y0 + 60), o.get("x", "TIEMPO").upper(), 54, C["grey"])
+    if o.get("y"):
+        cv.text((x0 + 20, y1 - 80), o["y"].upper(), 54, C["grey"], anchor="lm")
+    p = min(1.0, t / (D * 0.8))
+    N = 60
+    m = int(N * p) + 1
+    if o.get("flat", True):
+        cv.path([(x0 + (x1 - x0) * i / N, y0 - 70 - 30 * (i / N)) for i in range(m)], 8, C["grey"])
+    pts = [(x0 + (x1 - x0) * i / N, y0 - 20 - (y0 - y1 - 20) * ((math.exp(3.2 * i / N) - 1) / (math.exp(3.2) - 1)))
+           for i in range(m)]
+    if len(pts) > 1:
+        cv.poly(pts + [(pts[-1][0], y0), (x0, y0)], mix(C["bg"], C["gold"], 0.18))
+        cv.path(pts, 12, C["gold"])
+        cv.circle(pts[-1], 26, fill=mix(C["bg"], C["gold"], 0.4))
+        cv.circle(pts[-1], 15, fill=C["gold"])
+    if o.get("flat_label") and p > 0.5:
+        cv.text((x1, y0 - 140), o["flat_label"].upper(), 50, C["grey"], anchor="rm")
+    if o.get("end_label") and p >= 1:
+        k = pop(t, D * 0.8)
+        if k > 0.02:
+            cv.text((pts[-1][0] - 40, pts[-1][1] - 70), o["end_label"].upper(), 64 * k, C["gold"], anchor="rm")
+
+
+def scene_flow(cv, t, D, o):
+    """Pasos en cadena de arriba abajo con flechas. o: steps [[emoji, texto]...]."""
+    steps = o.get("steps", [])
+    gap = min(300, 900 / max(1, len(steps) - 1)) if len(steps) > 1 else 0
+    ytop = 1000 - gap * (len(steps) - 1) / 2
+    for i, (ic, lab) in enumerate(steps):
+        y = ytop + i * gap
+        d = 0.1 + i * o.get("step", 0.45)
+        k = pop(t, d)
+        cv.circle((300, y), 105 * k, fill=C["soft"], outline=C["gold"] if i == len(steps) - 1 else C["grey"], w=5)
+        emoji(cv, ic, (300, y), 130, k)
+        if k > 0.3:
+            col = C["gold"] if i == len(steps) - 1 else C["ink"]
+            cv.text((450, y), lab.upper(), 70, col, anchor="lm")
+        if i < len(steps) - 1 and t > d + 0.25:
+            a = ease((t - d - 0.25) / 0.2)
+            cv.line((300, y + 120), (300, y + 120 + (gap - 240) * a), 9, C["grey"])
+            if a >= 1:
+                cv.poly([(280, y + gap - 135), (320, y + gap - 135), (300, y + gap - 112)], C["grey"])
+
+
+def scene_drain(cv, t, D, o):
+    """Algo que se vacía: icono grande, barra que baja y cosas que salen volando.
+    o: icon, bar_label, out (lista de emojis), to (nivel final 0-1)."""
+    k = pop(t, 0, 0.35)
+    emoji(cv, o.get("icon", "👛"), (540, 760), 300, k)
+    rnd = random.Random(5)
+    outs = o.get("out", ["📱", "🚗", "🏠", "🛍️"])
+    for i in range(10):
+        t0 = 0.4 + i * (D - 0.8) / 10
+        if t < t0:
+            continue
+        q = (t - t0) / 0.9
+        if q > 1:
+            continue
+        ang = rnd.uniform(-1, 1)
+        x = 540 + ang * 520 * q
+        y = 760 - 380 * q + 520 * q * q
+        emoji(cv, outs[i % len(outs)], (x, y), 110, 1, 1 - q * q)
+    lvl = 1 - (1 - o.get("to", 0.06)) * ease((t - 0.3) / (D - 0.6))
+    col = C["gold"] if lvl > 0.35 else C["red"]
+    cv.text((540, 1090), o.get("bar_label", "SUELDO").upper(), 64, C["ink"])
+    cv.rect(150, 1150, 930, 1210, fill=C["grid"], rad=30)
+    cv.rect(150, 1150, 150 + max(60, 780 * lvl), 1210, fill=col, rad=30)
+
+
+def scene_question(cv, t, D, o):
+    """Gran interrogación dorada que late y una pregunta debajo. o: big."""
+    k = (1 + 0.06 * math.sin(t * 5)) * pop(t, 0, 0.35)
+    if k > 0.02:
+        cv.text((540, 720), "?", 520 * k, C["gold"])
+    kinetic(cv, o.get("big", ""), t, 1180, o.get("size", 96), step=0.09)
+
+
 SCENES = {k[6:]: v for k, v in globals().items() if k.startswith("scene_")}
 SCENES["sad"] = scene_walk
 
@@ -615,11 +850,15 @@ def label_box(cv, txt, y, size=96):
     cv.text((540, y), txt, size, C["gold"])
 
 
-ZOOM = dict(climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
+ZOOM = dict(title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
 
 
 def render(o, t, D, z=1.0):
     cv = Cv(z=z, cy=1060)
+    if C.get("grid"):
+        z0, cv.z = cv.z, 1.0
+        mg_background(cv, t)
+        cv.z = z0
     SCENES[o.get("scene", "stand")](cv, t, D, o)
     return cv
 

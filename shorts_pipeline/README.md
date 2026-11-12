@@ -58,3 +58,9 @@ Opciones por línea: `label`, `face`, `gold`, `bubble`, `alarm`, `zoom`… (ver 
 
 `estrategia_orvexa.md` recoge las descripciones del canal, la identidad visual, la tabla de guion
 en 4 columnas, las reglas de títulos y portada, y el embudo hacia orvexablogs.com.
+
+### Motion graphics sin personajes
+
+Con `"theme": "mg"` y las escenas `title`, `icons`, `versus`, `chart`, `flow`, `drain` y
+`question`, el mismo generador hace vídeos de textos animados, iconos (Noto Color Emoji),
+gráficas y comparaciones sobre fondo oscuro con oro. Ejemplo completo en `ejemplo_motion.json`.
