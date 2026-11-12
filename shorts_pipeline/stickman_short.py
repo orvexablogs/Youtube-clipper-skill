@@ -11,6 +11,8 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
+  "tts": "flow" | "lines",                 (opcional; flow = todo el guion en una toma, con
+                                           silencios recortados y tiempos reales por palabra)
   "theme": "light" | "dark" | "8bit" | "mg" | "pixel" | "toon",  (opcional; mg = motion graphics,
                                           pixel = mg en pixel art, toon = mascota de dibujos + tarjeta)
   "lines": [
@@ -1187,17 +1189,81 @@ def blip_track(cuts, total, path, sr=48000):
         f.writeframes((np.clip(out, -1, 1) * 32767).astype(np.int16).tobytes())
 
 
-def main(spec_path):
-    global AMP, CUR_T
-    spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
-    C.update(THEMES[spec.get("theme", "light")])
-    base = Path(spec_path).resolve().parent
-    out = (base / spec["out"]).resolve()
-    work = out.parent / (out.stem + "_work")
-    work.mkdir(parents=True, exist_ok=True)
-    voice = spec.get("voice", "es-ES-AlvaroNeural")
-    lines = spec["lines"]
+def norm(w):
+    return re.sub(r"[^\w]", "", w).lower()
 
+
+def narrate_flow(lines, voice, work):
+    """Narra el guion entero en una sola toma (entonación y ritmo naturales entre frases)
+    y usa los tiempos reales de cada palabra para cortar escenas y sincronizar subtítulos."""
+    import shutil
+    txt, mp3, js = work / "guion.txt", work / "voz.mp3", work / "palabras.json"
+    txt.write_text(" ".join(ln["text"].strip() for ln in lines), encoding="utf-8")
+    exe = shutil.which("edge-tts")
+    py = str(Path(exe).resolve().parent / "python") if exe else sys.executable
+    run([py, str(HERE / "tts_words.py"), str(txt), voice, str(mp3), str(js), "+8%", "-3Hz"], capture_output=True)
+    bnd = json.loads(js.read_text(encoding="utf-8"))
+    # recortar los silencios largos entre frases para un ritmo continuo de Short
+    sr = 48000
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(mp3), "-f", "s16le", "-ac", "1",
+                                   "-ar", str(sr), "-"])
+    audio = np.frombuffer(raw, dtype=np.int16)
+    maxgap, keep, shift, pos, out = 0.26, [], 0.0, 0, []
+    for k, (s0, e0, w) in enumerate(bnd):
+        if k > 0:
+            gap = s0 - bnd[k - 1][1]
+            if gap > maxgap:
+                cut0 = int((bnd[k - 1][1] + maxgap * 0.5) * sr)
+                cut1 = int((s0 - maxgap * 0.5) * sr)
+                out.append(audio[pos:cut0])
+                pos = cut1
+                shift += (cut1 - cut0) / sr
+        keep.append([s0 - shift, e0 - shift, w])
+    out.append(audio[pos:])
+    bnd = keep
+    pcm = work / "voz_raw.wav"
+    with wave.open(str(pcm), "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(sr)
+        f.writeframes(np.concatenate(out).tobytes())
+    voz = work / "voz.wav"
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(pcm), "-af", "loudnorm=I=-14:TP=-1.5,aresample=48000",
+         "-ac", "1", str(voz)])
+    total = duration(voz) + 0.3
+    # alinear cada palabra del guion con su marca de tiempo (tolerando signos sueltos)
+    words, firsts, j = [], [], 0
+    for ln in lines:
+        first = None
+        for w in ln["text"].split():
+            key = norm(w)
+            hit = None
+            for k in range(j, min(j + 4, len(bnd))):
+                if norm(bnd[k][2]) == key or (key and norm(bnd[k][2]).startswith(key[:4])):
+                    hit = k
+                    break
+            if hit is not None:
+                s0, e0 = bnd[hit][0], bnd[hit][1]
+                j = hit + 1
+            else:
+                s0 = words[-1][1] if words else 0.0
+                e0 = s0 + 0.2
+            words.append((s0, e0, w))
+            first = s0 if first is None else first
+        firsts.append(first if first is not None else (words[-1][0] if words else 0.0))
+    starts = [0.0] + [max(0.0, f - 0.12) for f in firsts[1:]]
+    segs = []
+    for i, ln in enumerate(lines):
+        end = starts[i + 1] if i + 1 < len(lines) else total
+        segs.append(dict(dur=max(0.4, end - starts[i]), start=starts[i], o=ln))
+    # alargar cada palabra hasta la siguiente para que el subtítulo no parpadee
+    words = [(s0, max(e0, words[k + 1][0]) if k + 1 < len(words) and words[k + 1][0] - e0 < 0.35 else e0, w)
+             for k, (s0, e0, w) in enumerate(words)]
+    return segs, words, total, voz
+
+
+def narrate_lines(lines, voice, work):
+    """Modo antiguo: una toma por frase con pausa fija entre frases."""
     segs, words, t = [], [], 0.0
     for i, ln in enumerate(lines):
         mp3, wav = work / f"l{i}.mp3", work / f"l{i}.wav"
@@ -1225,6 +1291,24 @@ def main(spec_path):
     fc += "".join(f"[a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1,loudnorm=I=-14:TP=-1.5,aresample=48000[a]"
     voz = work / "voz.wav"
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-filter_complex", fc, "-map", "[a]", str(voz)])
+    return segs, words, total, voz
+
+
+def main(spec_path):
+    global AMP, CUR_T
+    spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+    C.update(THEMES[spec.get("theme", "light")])
+    base = Path(spec_path).resolve().parent
+    out = (base / spec["out"]).resolve()
+    work = out.parent / (out.stem + "_work")
+    work.mkdir(parents=True, exist_ok=True)
+    voice = spec.get("voice", "es-ES-AlvaroNeural")
+    lines = spec["lines"]
+
+    if spec.get("tts", "flow") == "flow":
+        segs, words, total, voz = narrate_flow(lines, voice, work)
+    else:
+        segs, words, total, voz = narrate_lines(lines, voice, work)
     with wave.open(str(voz)) as wf:
         raw = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
         raw = raw.reshape(-1, wf.getnchannels()).mean(axis=1)
