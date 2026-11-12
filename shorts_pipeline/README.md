@@ -64,3 +64,9 @@ en 4 columnas, las reglas de títulos y portada, y el embudo hacia orvexablogs.c
 Con `"theme": "mg"` (o `"pixel"` para la versión pixel art) y las escenas `title`, `icons`, `versus`, `chart`, `flow`, `drain` y
 `question`, el mismo generador hace vídeos de textos animados, iconos (Noto Color Emoji),
 gráficas y comparaciones sobre fondo oscuro con oro. Ejemplo completo en `ejemplo_motion.json`.
+
+### Mascota de dibujos (`"theme": "toon"`)
+
+Personaje propio en ilustración plana que habla con la voz (la boca sigue el volumen), parpadea
+y cambia de pose y expresión en cada frase; el gráfico va en una tarjeta arriba y los subtítulos
+entre la tarjeta y el personaje. Sudadera gris = EL RESTO, dorada = TÚ. Ejemplo: `ejemplo_toon.json`.

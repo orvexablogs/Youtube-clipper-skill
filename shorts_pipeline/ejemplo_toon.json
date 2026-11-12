@@ -1,0 +1,13 @@
+{"out":"ganas_mas_sigues_igual_toon_9x16.mp4","theme":"toon","lines":[
+{"text":"Te suben el sueldo. Y a los tres meses, estás igual que antes.","scene":"drain","icon":"💰","bar_label":"tu sueldo","out":["📱","🚗","🏠","🛍️"],"pose":"facepalm","hook":"¿DÓNDE SE VA?"},
+{"text":"No es mala suerte. Se llama inflación del estilo de vida.","scene":"title","big":"Se llama *inflación del estilo de vida*.","pose":"point"},
+{"text":"Dos personas. La misma subida.","scene":"versus","top":{"label":"EL RESTO","icon":"💼","text":"misma subida","bar":0.5},"bottom":{"label":"TÚ","icon":"💼","text":"misma subida","bar":0.5},"pose":"shrug","face":"serious"},
+{"text":"El primero cambia de móvil. De coche. De piso.","scene":"icons","items":[["📱","móvil"],["🚗","coche"],["🏠","piso"]],"step":0.6,"label":"EL RESTO","pose":"celebrate"},
+{"text":"Cada aumento se convierte en un gasto nuevo.","scene":"flow","steps":[["📈","aumento"],["🛍️","gasto nuevo"]],"label":"EL RESTO","pose":"shrug","face":"serious"},
+{"text":"Gana más. Pero llega a fin de mes igual de justo.","scene":"drain","icon":"👛","bar_label":"fin de mes","out":["🛍️","🍔","📦"],"to":0.04,"label":"EL RESTO","pose":"facepalm"},
+{"text":"El segundo vive igual que antes de la subida.","scene":"title","icon":"🏠","big":"Vive *igual que antes*.","label":"TÚ","pose":"wave"},
+{"text":"Y la diferencia la guarda antes de verla.","scene":"flow","steps":[["💰","sueldo"],["🔒","aparta"],["🏦","ahorro"]],"label":"TÚ","pose":"thumbs"},
+{"text":"Nadie lo nota. No presume de nada.","scene":"icons","items":[["👀","nadie lo ve"],["🤫","no presume"]],"step":0.5,"label":"TÚ","pose":"cross","face":"smirk"},
+{"text":"Pero cada subida le compra algo que el resto no tiene: margen.","scene":"chart","y":"tu margen","x":"cada subida","flat_label":"el resto","end_label":"tú","label":"TÚ","pose":"up"},
+{"text":"No te hace rico lo que ganas. Te hace rico lo que no gastas.","scene":"versus","top":{"label":"LO QUE GANAS","icon":"💵","text":"no te hace rico"},"bottom":{"label":"LO QUE NO GASTAS","icon":"💎","text":"te hace *rico*"},"pose":"point"},
+{"text":"La próxima vez que te suban el sueldo, ¿a dónde va a ir?","scene":"question","big":"¿A dónde va a ir tu *próxima subida*?","pose":"think"}]}

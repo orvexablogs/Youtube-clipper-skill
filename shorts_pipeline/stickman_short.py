@@ -11,7 +11,8 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
-  "theme": "light" | "dark" | "8bit" | "mg" | "pixel",  (opcional; mg = motion graphics, pixel = mg en pixel art)
+  "theme": "light" | "dark" | "8bit" | "mg" | "pixel" | "toon",  (opcional; mg = motion graphics,
+                                          pixel = mg en pixel art, toon = mascota de dibujos + tarjeta)
   "lines": [
     {"text": "Las seis de la mañana.", "scene": "sleep", "alarm": true},
     {"text": "Uno se levanta.", "scene": "split",
@@ -25,7 +26,11 @@ work, money, push, read, crowd, graph, clock, split.
 Escenas de motion graphics sin personajes (tema "mg"): title (texto grande palabra
 a palabra, *dorado*), icons (emojis con rótulo, strike/check), versus (EL RESTO / TÚ
 con barras), chart (gráfica con área), flow (pasos con flechas), drain (algo que se
-vacía, bar_label) y question (gran interrogación).  Opciones comunes por línea:
+vacía, bar_label) y question (gran interrogación).
+Tema "toon": cada línea pinta su escena de motion graphics dentro de una tarjeta arriba y la
+mascota del canal abajo, que habla con la voz y parpadea. Opciones: pose (idle, up, celebrate,
+wave, point, think, facepalm, shrug, thumbs, cross), face (happy, sad, shock, serious, smirk) y
+label EL RESTO (sudadera gris) / TÚ (sudadera dorada), que sale como chapa en el pecho.  Opciones comunes por línea:
 "label" (cartel arriba), "hook" (texto gancho de 2-4 palabras en grande durante
 los primeros 2,4 s; ponlo en la primera línea, nunca repite palabras del título), "face" (happy, sad, neutral, determined, tired,
 shock), "gold" (monigote dorado).  Ver cada función scene_* para el resto.
@@ -60,6 +65,11 @@ THEMES = {
                   red=(255, 0, 77), soft=(0, 0, 0), glow=(255, 204, 170), box=(0, 0, 0), grid=(29, 43, 83),
                   pixel=6, font="PixelifySans.ttf", fscale=0.85, sfx="blip",
                   sub_font="Pixelify Sans", sub_size=96, hi="&H27ECFF&"),
+    # Dibujos: mascota del canal en ilustración plana + gráfico en tarjeta (como los
+    # explicadores animados con personaje). Subtítulos entre la tarjeta y el personaje.
+    "toon": dict(bg=(15, 15, 21), ink=(246, 243, 236), gold=(236, 178, 62), grey=(128, 128, 140),
+                 red=(232, 72, 72), soft=(26, 26, 34), glow=(70, 60, 30), box=(0, 0, 0), grid=(15, 15, 21),
+                 toon=True, sub_y=900, sub_size=100),
     # Motion graphics sin personajes: fondo casi negro con rejilla, oro y blanco.
     "mg": dict(bg=(13, 13, 17), ink=(246, 243, 236), gold=(236, 191, 88), grey=(128, 128, 140),
                red=(232, 72, 72), soft=(28, 28, 36), glow=(70, 60, 30), box=(0, 0, 0), grid=(22, 22, 29)),
@@ -141,8 +151,11 @@ class Cv:
         self.z, self.cx, self.cy = z, cx, cy
         self.texts = []  # en pixel art el texto se dibuja nítido después de pixelar
 
+    ox = oy = 0
+
     def P(self, p):
-        return ((p[0] - self.cx) * self.z + self.cx) * SS, ((p[1] - self.cy) * self.z + self.cy) * SS
+        return (((p[0] - self.cx) * self.z + self.cx + self.ox) * SS,
+                ((p[1] - self.cy) * self.z + self.cy + self.oy) * SS)
 
     def S(self, w):
         return max(1, int(round(w * self.z * SS)))
@@ -887,7 +900,170 @@ def render(o, t, D, z=1.0):
     return cv
 
 
+# ---------------------------------------------------------------- personaje de dibujos (tema "toon")
+# Mascota propia del canal, en ilustración plana: busto abajo, gráfico en una tarjeta arriba.
+# Habla con la voz (la boca se abre según el volumen), parpadea y cambia de pose y de cara.
+AMP = None          # volumen de la voz por fotograma (0-1), lo rellena main()
+CUR_T = 0.0         # tiempo global del vídeo en el fotograma actual
+SKIN, SKIN_D = (238, 196, 158), (214, 164, 126)
+HAIR = (38, 30, 34)
+HOODIE = {"TÚ": ((222, 166, 44), (186, 134, 28)), "EL RESTO": ((112, 112, 128), (88, 88, 102))}
+HOODIE_DEF = ((62, 92, 168), (46, 70, 134))
+
+
+def amp_now():
+    if AMP is None or len(AMP) == 0:
+        return 0.0
+    return float(AMP[min(len(AMP) - 1, int(CUR_T * FPS))])
+
+
+def ellipse(cv, c, rx, ry, fill):
+    x, y = cv.P(c)
+    cv.d.ellipse([x - rx * cv.z * SS, y - ry * cv.z * SS, x + rx * cv.z * SS, y + ry * cv.z * SS], fill=fill)
+
+
+ARM_POSES = {
+    # (codo, mano, tipo de mano, delante de la cara) por brazo; None = brazo abajo, fuera de cuadro
+    "idle": (None, None),
+    "up": (((170, 1500), (195, 1170), "open", False), ((910, 1500), (885, 1170), "open", False)),
+    "celebrate": (((170, 1480), (210, 1130), "fist", False), ((910, 1480), (870, 1130), "fist", False)),
+    "wave": (None, ((905, 1480), (930, 1150), "open", False)),
+    "point": (None, ((905, 1500), (895, 1090), "point", False)),
+    "think": (None, ((770, 1760), (625, 1450), "fist", True)),
+    "facepalm": (None, ((810, 1700), (600, 1110), "open", True)),
+    "shrug": (((170, 1720), (105, 1545), "open", False), ((910, 1720), (975, 1545), "open", False)),
+    "thumbs": (None, ((880, 1720), (860, 1470), "thumb", True)),
+    "cross": (((250, 1820), (720, 1770), "fist", True), ((830, 1820), (360, 1750), "fist", True)),
+}
+POSE_FACE = {"up": "happy", "celebrate": "happy", "wave": "happy", "thumbs": "happy", "facepalm": "sad",
+             "shrug": "serious", "think": "serious", "cross": "serious", "point": "happy"}
+
+
+def draw_arm(cv, sh, el, hand, kind, col, t, wiggle=0.0):
+    hx, hy = hand
+    hx += wiggle
+    cv.line(sh, el, 116, col[1])
+    cv.line(el, (hx, hy), 112, col[1])
+    cv.line(sh, el, 100, col[0])
+    cv.line(el, (hx, hy), 96, col[0])
+    cv.circle((hx, hy + 8), 64, fill=SKIN)
+    if kind == "open":
+        for i, dx in enumerate((-42, -14, 14, 42)):
+            cv.line((hx + dx, hy - 10), (hx + dx * 1.15, hy - 78 + abs(dx) * 0.35), 30, SKIN)
+        cv.line((hx - 50, hy + 20), (hx - 92, hy - 10), 30, SKIN)
+    elif kind == "point":
+        cv.line((hx - 10, hy - 20), (hx - 10, hy - 125), 30, SKIN)
+    elif kind == "thumb":
+        cv.line((hx, hy - 30), (hx, hy - 110), 34, SKIN)
+    cv.circle((hx - 18, hy + 22), 10, fill=SKIN_D)
+
+
+def mascot(cv, t, o):
+    lab = o.get("label") or o.get("who")
+    col = HOODIE.get((lab or "").upper(), HOODIE_DEF)
+    pose = o.get("pose", "idle")
+    a = amp_now()
+    by = -10 * a + 5 * math.sin(CUR_T * 2.2)
+    if pose == "celebrate":
+        by -= 26 * abs(math.sin(t * 6))
+    sx = 6 * math.sin(CUR_T * 1.3)
+    face = o.get("face") or POSE_FACE.get(pose) or {"TÚ": "happy", "EL RESTO": "serious"}.get((lab or "").upper(), "happy")
+    arms = ARM_POSES.get(pose, ARM_POSES["idle"])
+    shoulders = ((330, 1650 + by), (750, 1650 + by))
+    wig = 26 * math.sin(t * 11) if pose == "wave" else 0
+    # torso
+    cv.rect(190, 1560 + by, 890, 2100, fill=col[0], rad=200)
+    ellipse(cv, (540, 1580 + by), 190, 70, col[1])
+    cv.rect(475, 1430 + by, 605, 1590 + by, fill=SKIN_D, rad=30)
+    cv.line((500, 1630 + by), (490, 1760 + by), 10, (245, 240, 230))
+    cv.line((580, 1630 + by), (590, 1760 + by), 10, (245, 240, 230))
+    # brazos detrás de la cabeza
+    for side, arm in enumerate(arms):
+        if arm and not arm[3]:
+            draw_arm(cv, shoulders[side], arm[0], arm[1], arm[2], col, t, wig if side == 1 else 0)
+    # cabeza
+    hx, hy = 540 + sx, 1235 + by
+    for s_ in (-1, 1):
+        cv.circle((hx + s_ * 222, hy + 25), 50, fill=SKIN)
+        cv.circle((hx + s_ * 226, hy + 25), 26, fill=SKIN_D)
+    ellipse(cv, (hx, hy), 222, 248, SKIN)
+    ellipse(cv, (hx, hy - 205), 228, 110, HAIR)
+    for dx, dy, r in ((-175, -165, 78), (-95, -245, 82), (0, -262, 86), (95, -245, 82), (175, -165, 78),
+                      (-205, -95, 44), (205, -95, 44)):
+        cv.circle((hx + dx, hy + dy), r, fill=HAIR)
+    cv.poly([(hx - 150, hy - 150), (hx - 40, hy - 150), (hx - 110, hy - 85)], HAIR)
+    cv.poly([(hx - 50, hy - 160), (hx + 120, hy - 160), (hx + 20, hy - 92)], HAIR)
+    # cejas
+    br = {"sad": (-14, 14), "shock": (-26, -26), "serious": (10, -10), "smirk": (-4, -18)}.get(face, (0, 0))
+    for s_, d in ((-1, br[0]), (1, br[1])):
+        ex = hx + s_ * 95
+        cv.line((ex - 46, hy - 98 + (d if s_ < 0 else -d) * 0.5 + (d * 0.5)), (ex + 46, hy - 98 - (d if s_ < 0 else -d) * 0.5 + (d * 0.5)), 20, HAIR)
+    # ojos (parpadeo cada ~3,7 s)
+    blink = (CUR_T % 3.7) < 0.12 or face == "closed" or pose == "facepalm"
+    lx, ly = (0, -10) if pose in ("point", "think", "up") else (0, 0)
+    for s_ in (-1, 1):
+        ex, ey = hx + s_ * 95, hy - 22
+        if blink:
+            cv.line((ex - 34, ey + 6), (ex + 34, ey + 6), 12, HAIR)
+            continue
+        ellipse(cv, (ex, ey), 40, 48, (255, 255, 255))
+        cv.circle((ex + lx, ey + 4 + ly), 23, fill=(28, 24, 30))
+        cv.circle((ex + lx + 8, ey - 6 + ly), 8, fill=(255, 255, 255))
+    # nariz y mejillas
+    ellipse(cv, (hx, hy + 55), 24, 17, SKIN_D)
+    for s_ in (-1, 1):
+        ellipse(cv, (hx + s_ * 150, hy + 80), 40, 23, mix(SKIN, (240, 120, 120), 0.45))
+    # boca: se abre con el volumen de la voz
+    mx, my = hx, hy + 135
+    op = min(1.0, a * 1.3)
+    dark, tongue = (70, 22, 30), (226, 102, 112)
+    if face in ("happy", "smirk"):
+        h = 26 + 60 * op
+        pts = [(mx - 70 + 140 * i / 16, my + h * math.sin(math.pi * i / 16)) for i in range(17)]
+        cv.poly([(mx - 70, my)] + pts + [(mx + 70, my)], dark)
+        cv.rect(mx - 52, my - 2, mx + 52, my + 14, fill=(255, 255, 255), rad=6)
+        if h > 45:
+            ellipse(cv, (mx, my + h * 0.75), 34, h * 0.22, tongue)
+    elif face == "sad":
+        h = 14 + 40 * op
+        pts = [(mx - 55 + 110 * i / 16, my + 20 - h * math.sin(math.pi * i / 16)) for i in range(17)]
+        cv.poly(pts, dark)
+        cv.path(pts, 8, dark)
+    elif face == "shock":
+        ellipse(cv, (mx, my + 10), 34, 34 + 26 * op, dark)
+    else:
+        h = 10 + 46 * op
+        cv.rect(mx - 48, my - h / 2 + 8, mx + 48, my + h / 2 + 8, fill=dark, rad=min(18, h / 2))
+    # brazos delante de la cara
+    for side, arm in enumerate(arms):
+        if arm and arm[3]:
+            draw_arm(cv, shoulders[side], arm[0], arm[1], arm[2], col, t)
+    # etiqueta en el pecho
+    if lab:
+        label_box(cv, lab.upper(), 1755 + by, 64)
+
+
+def toon_frame(o, t, D):
+    cv = Cv()
+    mg_background(cv, t)
+    cv.rect(60, 120, 1020, 830, fill=C["soft"], outline=C["gold"], w=5, rad=44)
+    if o.get("scene") and o["scene"] in SCENES:
+        k = 0.62 * (1 + 0.04 * t / D)
+        cv.z, cv.cx, cv.cy, cv.oy = k, 540, 960, 475 - 960
+        SCENES[o["scene"]](cv, t, D, o)
+        cv.z, cv.cx, cv.cy = 1.0, 540, 1000
+    cv.oy = 110  # el personaje baja para dejar sitio a los subtítulos bajo la tarjeta
+    mascot(cv, t, o)
+    cv.oy = 0
+    hook = o.get("hook") if o.get("hook") and t < o.get("hook_dur", 2.4) else None
+    if hook:
+        hook_text(cv, hook, t)
+    return cv.final()
+
+
 def frame(o, t, D):
+    if C.get("toon"):
+        return toon_frame(o, t, D)
     labels = []
     if o.get("scene") == "split":
         cv = Cv()
@@ -1012,6 +1188,7 @@ def blip_track(cuts, total, path, sr=48000):
 
 
 def main(spec_path):
+    global AMP, CUR_T
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
     C.update(THEMES[spec.get("theme", "light")])
     base = Path(spec_path).resolve().parent
@@ -1048,6 +1225,14 @@ def main(spec_path):
     fc += "".join(f"[a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1,loudnorm=I=-14:TP=-1.5,aresample=48000[a]"
     voz = work / "voz.wav"
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-filter_complex", fc, "-map", "[a]", str(voz)])
+    with wave.open(str(voz)) as wf:
+        raw = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
+        raw = raw.reshape(-1, wf.getnchannels()).mean(axis=1)
+        spf = wf.getframerate() // FPS
+    n = len(raw) // spf
+    rms = np.sqrt((raw[: n * spf].reshape(n, spf) ** 2).mean(axis=1))
+    AMP = np.clip(rms / (np.percentile(rms, 95) + 1e-6), 0, 1)
+    AMP = np.convolve(AMP, [0.25, 0.5, 0.25], mode="same")
     sfx = work / "sfx.wav"
     (blip_track if C.get("sfx") == "blip" else whoosh_track)([s["start"] for s in segs[1:]], total, sfx)
 
@@ -1078,7 +1263,7 @@ def main(spec_path):
                            if j == k else x[2].upper()
                            for j, x in enumerate(ch))
             pop = "{\\fscx112\\fscy112\\t(0,90,\\fscx100\\fscy100)}" if k == 0 else ""
-            ass.append(f"Dialogue: 0,{ts(s)},{ts(end)},W,,0,0,0,,{{\\pos(540,1660)}}{pop}{txt}")
+            ass.append(f"Dialogue: 0,{ts(s)},{ts(end)},W,,0,0,0,,{{\\pos(540,{C.get('sub_y', 1660)})}}{pop}{txt}")
     subs = work / "subs.ass"
     subs.write_text("\n".join(ass), encoding="utf-8")
 
@@ -1099,6 +1284,7 @@ def main(spec_path):
         while si + 1 < len(segs) and tt >= segs[si + 1]["start"]:
             si += 1
         s = segs[si]
+        CUR_T = tt
         ff.stdin.write(frame(s["o"], tt - s["start"], s["dur"]).tobytes())
     ff.stdin.close()
     if ff.wait():
