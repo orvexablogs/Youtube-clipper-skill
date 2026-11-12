@@ -53,3 +53,8 @@ python3 stickman_short.py --preview carpeta/         # un fotograma de cada esce
 Escenas: `stand`, `walk`, `sad`, `run`, `sleep`, `phone`, `think`, `climb`, `lift`, `work`,
 `money`, `push`, `read`, `crowd`, `graph`, `clock` y `split` (dos paneles con `top`/`bottom`).
 Opciones por línea: `label`, `face`, `gold`, `bubble`, `alarm`, `zoom`… (ver la cabecera del script).
+
+## Estrategia y sistema de guion
+
+`estrategia_orvexa.md` recoge las descripciones del canal, la identidad visual, la tabla de guion
+en 4 columnas, las reglas de títulos y portada, y el embudo hacia orvexablogs.com.

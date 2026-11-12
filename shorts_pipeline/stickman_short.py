@@ -22,7 +22,8 @@ spec.json:
 
 Escenas: stand, walk, sad, run, sleep, phone, think, climb, lift, work,
 money, push, read, crowd, graph, clock, split.  Opciones comunes por línea:
-"label" (cartel arriba), "face" (happy, sad, neutral, determined, tired,
+"label" (cartel arriba), "hook" (texto gancho de 2-4 palabras en grande durante
+los primeros 2,4 s; ponlo en la primera línea, nunca repite palabras del título), "face" (happy, sad, neutral, determined, tired,
 shock), "gold" (monigote dorado).  Ver cada función scene_* para el resto.
 
 Requisitos: ffmpeg con libass, Pillow, numpy y `pip install edge-tts`.
@@ -605,9 +606,31 @@ def frame(o, t, D):
         z *= 1 + 0.045 * t / D + (0.07 * (1 - t / 0.25) ** 2 if t < 0.25 else 0)
         cv = render(o, t, D, z)
     cv.z, cv.cx, cv.cy = 1.0, 540, 1000
-    if o.get("label"):
+    if o.get("hook") and t < o.get("hook_dur", 2.4):
+        hook_text(cv, o["hook"], t)
+    elif o.get("label"):
         label_box(cv, o["label"], 300)
     return cv.final()
+
+
+def hook_text(cv, txt, t, size=132):
+    """Texto gancho grande (2-4 palabras) que entra con un golpe de escala en el
+    primer segundo y medio: lo primero que se lee antes de deslizar."""
+    words, lines = txt.upper().split(), []
+    for w in words:
+        if lines and font(size * SS).getlength(lines[-1] + " " + w) / SS < 900:
+            lines[-1] += " " + w
+        else:
+            lines.append(w)
+    k = 1 + 0.35 * (1 - ease(t / 0.18))
+    cv.z, cv.cx, cv.cy = k, 540, 330
+    y0 = 330 - (len(lines) - 1) * size * 0.62
+    for i, ln in enumerate(lines):
+        y = y0 + i * size * 1.24
+        w = font(size * SS).getlength(ln) / SS + 70
+        cv.rect(540 - w / 2, y - size * 0.68, 540 + w / 2, y + size * 0.68, fill=C["box"], rad=16)
+        cv.text((540, y + 4), ln, size, C["gold"] if i == len(lines) - 1 else (255, 255, 255))
+    cv.z, cv.cx, cv.cy = 1.0, 540, 1000
 
 
 # ---------------------------------------------------------------- audio, subtítulos y montaje
