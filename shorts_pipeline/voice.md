@@ -61,3 +61,19 @@ verdad lo sea), emojis en la voz, preguntas retóricas vacías ("¿Quieres tener
 - Escena nueva cada 2–3 segundos; fotos de lujo y de esfuerzo con zoom y transiciones suaves.
 - Subtítulos de 3 palabras, palabra actual en amarillo, tipografía gruesa.
 - Sin palabrotas. Sin cara. Sin música estridente: épica o melancólica, por debajo de la voz.
+
+## Tono vacilón (Shorts en pixel art, desde el 12 de noviembre)
+
+Manda sobre "calma que impone" para los Shorts diarios. Voz `es-MX-JorgeNeural`, `"rate": "+12%"`,
+`"pitch": "+2Hz"`.
+
+- Habla como un colega que te vacila con cariño: ironía, exageración cómica, "spoiler", "tranqui",
+  "moraleja", "ahora dime la verdad".
+- Situaciones cotidianas reconocibles y graciosas: "arroz con huevo y la mirada perdida", "el
+  chocolate escondido en la nevera", "porque se lo merece".
+- Se ríe de los hábitos, nunca de la persona: sin insultos, sin palabrotas y sin humillar.
+- Se mantiene todo lo de "What I will not claim": sin cifras inventadas, sin promesas de dinero
+  rápido y sin consejos de inversión concretos.
+- La estructura no cambia: gancho que vacila → EL RESTO / TÚ → giro → moraleja → pregunta final
+  que pique a comentar.
+- Ejemplo completo: `ejemplo_pixel_vacilon.json`.

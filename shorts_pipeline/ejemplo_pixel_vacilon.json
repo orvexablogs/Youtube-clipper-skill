@@ -1,0 +1,151 @@
+{
+"out": "tu_ultima_subida_9x16.mp4",
+"theme": "pixel",
+"voice": "es-MX-JorgeNeural",
+"rate": "+12%",
+"pitch": "+2Hz",
+"lines": [
+{
+"text": "¿Te subieron el sueldo? Felicidades. Ya sabes en qué gastarlo, ¿verdad?",
+"scene": "drain",
+"icon": "💰",
+"bar_label": "tu sueldo",
+"out": [
+"📱",
+"🚗",
+"🏠",
+"🛍️"
+],
+"hook": "¿Y EL AHORRO?"
+},
+{
+"text": "Spoiler: a los tres meses vas a estar igual de pelado.",
+"scene": "title",
+"icon": "🫠",
+"big": "Spoiler: *igual de pelado*."
+},
+{
+"text": "Tranqui, no es mala suerte. Tiene nombre, y hasta suena elegante: inflación del estilo de vida.",
+"scene": "title",
+"big": "Se llama *inflación del estilo de vida*.",
+"icon": "🎩"
+},
+{
+"text": "Dos colegas. Misma subida. Finales muy distintos.",
+"scene": "versus",
+"top": {
+"label": "EL RESTO",
+"icon": "😎",
+"text": "misma subida",
+"bar": 0.5
+},
+"bottom": {
+"label": "TÚ",
+"icon": "🧠",
+"text": "misma subida",
+"bar": 0.5
+}
+},
+{
+"text": "Al primero le suben un poco, y gasta el doble.",
+"scene": "flow",
+"steps": [
+[
+"📈",
+"le suben"
+],
+[
+"💸",
+"gasta el doble"
+]
+],
+"label": "EL RESTO"
+},
+{
+"text": "Móvil nuevo, porque el viejo va lento. Coche nuevo, porque se lo merece. Piso nuevo, porque ya toca.",
+"scene": "icons",
+"items": [
+[
+"📱",
+"va lento"
+],
+[
+"🚗",
+"se lo merece"
+],
+[
+"🏠",
+"ya toca"
+]
+],
+"step": 1.2,
+"label": "EL RESTO"
+},
+{
+"text": "Y a fin de mes, arroz con huevo y la mirada perdida.",
+"scene": "drain",
+"icon": "🍚",
+"bar_label": "fin de mes",
+"out": [
+"💸",
+"🧾",
+"📦"
+],
+"to": 0.03,
+"label": "EL RESTO"
+},
+{
+"text": "El segundo hace algo rarísimo: nada. Vive igual que antes.",
+"scene": "title",
+"icon": "🧘",
+"big": "Hace algo rarísimo: *nada*.",
+"label": "TÚ"
+},
+{
+"text": "La diferencia la esconde antes de verla. Como el chocolate en la nevera.",
+"scene": "flow",
+"steps": [
+[
+"💰",
+"sueldo"
+],
+[
+"🔒",
+"la esconde"
+],
+[
+"🏦",
+"ahorro"
+]
+],
+"label": "TÚ"
+},
+{
+"text": "Nadie le aplaude. Nadie le da likes. Pero cada subida le compra margen.",
+"scene": "chart",
+"y": "tu margen",
+"x": "cada subida",
+"flat_label": "el resto",
+"end_label": "tú"
+},
+{
+"text": "Moraleja: no te hace rico lo que ganas. Te hace rico lo que no te gastas en tonterías.",
+"scene": "versus",
+"top": {
+"label": "LO QUE GANAS",
+"icon": "💵",
+"text": "no te hace rico"
+},
+"bottom": {
+"label": "LO QUE NO GASTAS",
+"icon": "💎",
+"text": "te hace *rico*"
+}
+},
+{
+"text": "Ahora dime la verdad: tu última subida, ¿dónde está?",
+"scene": "question",
+"big": "Tu última subida, *¿dónde está?*"
+}
+]
+}
