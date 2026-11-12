@@ -11,7 +11,7 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
-  "theme": "light" | "dark" | "8bit" | "mg",  (opcional; mg = motion graphics oscuro)
+  "theme": "light" | "dark" | "8bit" | "mg" | "pixel",  (opcional; mg = motion graphics, pixel = mg en pixel art)
   "lines": [
     {"text": "Las seis de la mañana.", "scene": "sleep", "alarm": true},
     {"text": "Uno se levanta.", "scene": "split",
@@ -54,6 +54,12 @@ GROUND = 1360
 THEMES = {
     "light": dict(bg=(245, 241, 232), ink=(22, 22, 24), gold=(214, 160, 30), grey=(160, 158, 152),
                   red=(205, 60, 50), soft=(225, 219, 205), glow=(255, 236, 160), box=(22, 22, 24)),
+    # Pixel art: las escenas de motion graphics pixeladas a 16 colores (los emojis se
+    # convierten en sprites), cajas negras de videojuego y letra pixel.
+    "pixel": dict(bg=(29, 43, 83), ink=(255, 241, 232), gold=(255, 236, 39), grey=(131, 118, 156),
+                  red=(255, 0, 77), soft=(0, 0, 0), glow=(255, 204, 170), box=(0, 0, 0), grid=(29, 43, 83),
+                  pixel=6, font="PixelifySans.ttf", fscale=0.85, sfx="blip",
+                  sub_font="Pixelify Sans", sub_size=96, hi="&H27ECFF&"),
     # Motion graphics sin personajes: fondo casi negro con rejilla, oro y blanco.
     "mg": dict(bg=(13, 13, 17), ink=(246, 243, 236), gold=(236, 191, 88), grey=(128, 128, 140),
                red=(232, 72, 72), soft=(28, 28, 36), glow=(70, 60, 30), box=(0, 0, 0), grid=(22, 22, 29)),
@@ -133,6 +139,7 @@ class Cv:
         self.img = Image.new("RGB", (W * SS, H * SS), C["bg"])
         self.d = ImageDraw.Draw(self.img)
         self.z, self.cx, self.cy = z, cx, cy
+        self.texts = []  # en pixel art el texto se dibuja nítido después de pixelar
 
     def P(self, p):
         return ((p[0] - self.cx) * self.z + self.cx) * SS, ((p[1] - self.cy) * self.z + self.cy) * SS
@@ -167,12 +174,25 @@ class Cv:
         self.d.polygon([self.P(p) for p in pts], fill=fill)
 
     def text(self, p, s, size, c, anchor="mm", stroke=0, stroke_c=None):
+        if C.get("pixel"):
+            x, y = self.P(p)
+            self.texts.append((x / SS, y / SS, s, size * self.z, c, anchor))
+            return
         self.d.text(self.P(p), s, font=font(size * self.z * SS), fill=c, anchor=anchor,
                     stroke_width=self.S(stroke) if stroke else 0, stroke_fill=stroke_c)
 
     def final(self):
         img = self.img.reduce(SS)
-        return pixelate(img) if C.get("pixel") else img
+        if not C.get("pixel"):
+            return img
+        img = pixelate(img)
+        d = ImageDraw.Draw(img)
+        for x, y, s, size, c, anchor in self.texts:
+            px = max(24, int(size * C.get("fscale", 1) / 6) * 6)
+            f = load_font(FONT_DIR / C["font"], px)
+            d.text((x + 6, y + 6), s, font=f, fill=(0, 0, 0), anchor=anchor)  # sombra de 1 píxel
+            d.text((x, y), s, font=f, fill=c, anchor=anchor)
+        return img
 
 
 # ---------------------------------------------------------------- monigote
@@ -695,10 +715,11 @@ def kinetic(cv, txt, t, y, size=140, step=0.11, maxw=900):
 
 def mg_background(cv, t):
     """Fondo oscuro con rejilla tenue y partículas doradas que flotan."""
-    for x in range(0, 1081, 90):
-        cv.line((x, 0), (x, 1920), 2, C["grid"])
-    for y in range(0, 1921, 90):
-        cv.line((0, y), (1080, y), 2, C["grid"])
+    if C["grid"] != C["bg"]:
+        for x in range(0, 1081, 90):
+            cv.line((x, 0), (x, 1920), 2, C["grid"])
+        for y in range(0, 1921, 90):
+            cv.line((0, y), (1080, y), 2, C["grid"])
     rnd = random.Random(21)
     for i in range(26):
         x = rnd.uniform(0, 1080)
@@ -799,7 +820,10 @@ def scene_flow(cv, t, D, o):
         emoji(cv, ic, (300, y), 130, k)
         if k > 0.3:
             col = C["gold"] if i == len(steps) - 1 else C["ink"]
-            cv.text((450, y), lab.upper(), 70, col, anchor="lm")
+            sz = 70
+            while sz > 40 and font(sz * SS).getlength(lab.upper()) / SS > 580:
+                sz -= 4
+            cv.text((450, y), lab.upper(), sz, col, anchor="lm")
         if i < len(steps) - 1 and t > d + 0.25:
             a = ease((t - d - 0.25) / 0.2)
             cv.line((300, y + 120), (300, y + 120 + (gap - 240) * a), 9, C["grey"])
