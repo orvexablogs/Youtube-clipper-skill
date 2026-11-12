@@ -11,7 +11,7 @@ spec.json:
 {
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
-  "theme": "light" | "dark",              (opcional, light = papel crema)
+  "theme": "light" | "dark" | "8bit",     (opcional, light = papel crema; 8bit = videojuego retro)
   "lines": [
     {"text": "Las seis de la mañana.", "scene": "sleep", "alarm": true},
     {"text": "Uno se levanta.", "scene": "split",
@@ -52,7 +52,16 @@ THEMES = {
                   red=(205, 60, 50), soft=(225, 219, 205), glow=(255, 236, 160), box=(22, 22, 24)),
     "dark": dict(bg=(16, 16, 19), ink=(238, 236, 230), gold=(232, 197, 120), grey=(95, 95, 100),
                  red=(225, 80, 70), soft=(40, 40, 46), glow=(90, 80, 40), box=(0, 0, 0)),
+    # Estilo videojuego de 8 bits: paleta fija de 16 colores, píxeles de 6x6, letra pixel,
+    # líneas de barrido tipo CRT y "blips" chiptune en los cortes.
+    "8bit": dict(bg=(29, 43, 83), ink=(255, 241, 232), gold=(255, 236, 39), grey=(131, 118, 156),
+                 red=(255, 0, 77), soft=(95, 87, 79), glow=(255, 204, 170), box=(0, 0, 0),
+                 pixel=6, font="PixelifySans.ttf", fscale=0.75, sfx="blip",
+                 sub_font="Pixelify Sans", sub_size=96, hi="&H27ECFF&"),
 }
+PALETTE_8BIT = [(0, 0, 0), (29, 43, 83), (126, 37, 83), (0, 135, 81), (171, 82, 54), (95, 87, 79),
+                (194, 195, 199), (255, 241, 232), (255, 0, 77), (255, 163, 0), (255, 236, 39), (0, 228, 54),
+                (41, 173, 255), (131, 118, 156), (255, 119, 168), (255, 204, 170)]
 C = dict(THEMES["light"])
 
 
@@ -77,11 +86,37 @@ def add(p, v, k=1.0):
 _fonts = {}
 
 
+def load_font(path, px):
+    if (path, px) not in _fonts:
+        f = ImageFont.truetype(str(path), px)
+        try:
+            f.set_variation_by_name("Bold")
+        except (OSError, ValueError):
+            pass
+        _fonts[(path, px)] = f
+    return _fonts[(path, px)]
+
+
 def font(px):
-    px = max(8, int(px))
-    if px not in _fonts:
-        _fonts[px] = ImageFont.truetype(str(FONT), px)
-    return _fonts[px]
+    px = max(8, int(px * C.get("fscale", 1)))
+    return load_font(FONT_DIR / C["font"] if C.get("font") else FONT, px)
+
+
+_pal = None
+
+
+def pixelate(img):
+    """Baja a una rejilla de bloques, ajusta a la paleta de 16 colores sin tramado,
+    vuelve a escalar sin suavizar y oscurece la última fila de cada bloque (efecto CRT)."""
+    global _pal
+    p = C["pixel"]
+    if _pal is None:
+        _pal = Image.new("P", (1, 1))
+        _pal.putpalette([v for c in PALETTE_8BIT for v in c] + [0] * (768 - 48))
+    small = img.resize((W // p, H // p), Image.BOX).quantize(palette=_pal, dither=Image.Dither.NONE)
+    big = np.asarray(small.convert("RGB").resize((W, H), Image.NEAREST)).copy()
+    big[p - 1::p] = (big[p - 1::p] * 0.78).astype(np.uint8)
+    return Image.fromarray(big)
 
 
 class Cv:
@@ -129,7 +164,8 @@ class Cv:
                     stroke_width=self.S(stroke) if stroke else 0, stroke_fill=stroke_c)
 
     def final(self):
-        return self.img.reduce(SS)
+        img = self.img.reduce(SS)
+        return pixelate(img) if C.get("pixel") else img
 
 
 # ---------------------------------------------------------------- monigote
@@ -589,6 +625,7 @@ def render(o, t, D, z=1.0):
 
 
 def frame(o, t, D):
+    labels = []
     if o.get("scene") == "split":
         cv = Cv()
         band = (8 * SS, 590 * SS, 1072 * SS, 1420 * SS)
@@ -600,17 +637,56 @@ def frame(o, t, D):
             cv.img.paste(img, (x * SS, top * SS))
             cv.rect(x, top, x + pw, top + ph, outline=C["ink"], w=8, rad=4)
             if sub.get("label"):
-                label_box(cv, sub["label"], top + 58, 60)
+                labels.append((sub["label"], top + 58, 60))
     else:
         z = ZOOM.get(o.get("scene", "stand"), 1.22) * o.get("zoom", 1)
         z *= 1 + 0.045 * t / D + (0.07 * (1 - t / 0.25) ** 2 if t < 0.25 else 0)
         cv = render(o, t, D, z)
     cv.z, cv.cx, cv.cy = 1.0, 540, 1000
-    if o.get("hook") and t < o.get("hook_dur", 2.4):
-        hook_text(cv, o["hook"], t)
-    elif o.get("label"):
-        label_box(cv, o["label"], 300)
+    hook = o.get("hook") if o.get("hook") and t < o.get("hook_dur", 2.4) else None
+    if not hook and o.get("label"):
+        labels.append((o["label"], 300, 96))
+    if C.get("pixel"):
+        # En 8 bits los textos se dibujan después de pixelar, para que la letra pixel salga nítida.
+        img = cv.final()
+        d = ImageDraw.Draw(img)
+        for txt, y, size in labels:
+            pixel_box(d, [txt.upper()], y, 72 if size > 80 else 48)
+        if hook and t > 0.04:
+            pixel_box(d, wrap_words(hook.upper(), 108, 900), 330, 108, last_gold=True)
+        return img
+    for lab in labels:
+        label_box(cv, *lab)
+    if hook:
+        hook_text(cv, hook, t)
     return cv.final()
+
+
+def pixel_font(px):
+    return load_font(FONT_DIR / THEMES["8bit"]["font"], px)
+
+
+def wrap_words(txt, px, maxw):
+    lines = []
+    for w in txt.split():
+        if lines and pixel_font(px).getlength(lines[-1] + " " + w) <= maxw:
+            lines[-1] += " " + w
+        else:
+            lines.append(w)
+    return lines
+
+
+def pixel_box(d, lines, y, px, last_gold=False):
+    """Cuadro de diálogo de videojuego: fondo negro, borde blanco de 6 px y letra pixel."""
+    f, lh = pixel_font(px), px + px // 2
+    w = max(f.getlength(ln) for ln in lines) + 2 * px
+    h = lh * len(lines) + px // 2
+    x0, y0 = 540 - w / 2, y - h / 2
+    d.rectangle([x0 - 6, y0 - 6, x0 + w + 6, y0 + h + 6], fill=C["ink"])
+    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(0, 0, 0))
+    for i, ln in enumerate(lines):
+        col = C["gold"] if (i == len(lines) - 1 or not last_gold) else C["ink"]
+        d.text((540, y0 + px // 2 + lh * i + lh / 2 - px // 8), ln, font=f, fill=col, anchor="mm")
 
 
 def hook_text(cv, txt, t, size=132):
@@ -654,6 +730,24 @@ def whoosh_track(cuts, total, path, sr=48000):
         f.writeframes((out * 32767).astype(np.int16).tobytes())
 
 
+def blip_track(cuts, total, path, sr=48000):
+    """Sonido chiptune: dos notas de onda cuadrada que suben en cada corte."""
+    out = np.zeros(int((total + 1) * sr), dtype=np.float32)
+    n = int(0.06 * sr)
+    tt = np.arange(n) / sr
+    env = np.linspace(1, 0, n) ** 1.5
+    note = lambda f: (np.sign(np.sin(2 * np.pi * f * tt)) * env * 0.35).astype(np.float32)
+    w = np.concatenate([note(660), note(990)])
+    for c in cuts:
+        i = max(0, int((c - 0.06) * sr))
+        out[i:i + len(w)] += w[: len(out) - i]
+    with wave.open(str(path), "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(sr)
+        f.writeframes((np.clip(out, -1, 1) * 32767).astype(np.int16).tobytes())
+
+
 def main(spec_path):
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
     C.update(THEMES[spec.get("theme", "light")])
@@ -692,7 +786,7 @@ def main(spec_path):
     voz = work / "voz.wav"
     run(["ffmpeg", "-v", "error", "-y"] + inputs + ["-filter_complex", fc, "-map", "[a]", str(voz)])
     sfx = work / "sfx.wav"
-    whoosh_track([s["start"] for s in segs[1:]], total, sfx)
+    (blip_track if C.get("sfx") == "blip" else whoosh_track)([s["start"] for s in segs[1:]], total, sfx)
 
     def ts(x):
         return f"{int(x // 3600)}:{int(x % 3600 // 60):02d}:{x % 60:05.2f}"
@@ -701,7 +795,9 @@ def main(spec_path):
            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
            "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
            "MarginL, MarginR, MarginV, Encoding",
-           "Style: W,Anton,124,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,1,0,1,7,2,5,60,60,0,1",
+           f"Style: W,{C.get('sub_font', 'Anton')},{C.get('sub_size', 124)},&H00FFFFFF,&H00FFFFFF,&H00000000,"
+           f"&H64000000,0,0,0,0,100,100,1,0,1,{8 if C.get('pixel') else 7},{0 if C.get('pixel') else 2},"
+           "5,60,60,0,1",
            "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     chunks, cur = [], []
     for w in words:
@@ -715,7 +811,8 @@ def main(spec_path):
         nxt = chunks[ci + 1][0][0] if ci + 1 < len(chunks) else 1e9
         for k, (s, e, _) in enumerate(ch):
             end = ch[k + 1][0] if k + 1 < len(ch) else min(e + 0.05, nxt)
-            txt = " ".join(("{\\c&H00D7FF&}" + x[2].upper() + "{\\c&HFFFFFF&}") if j == k else x[2].upper()
+            txt = " ".join(("{\\c" + C.get("hi", "&H00D7FF&") + "}" + x[2].upper() + "{\\c&HFFFFFF&}")
+                           if j == k else x[2].upper()
                            for j, x in enumerate(ch))
             pop = "{\\fscx112\\fscy112\\t(0,90,\\fscx100\\fscy100)}" if k == 0 else ""
             ass.append(f"Dialogue: 0,{ts(s)},{ts(end)},W,,0,0,0,,{{\\pos(540,1660)}}{pop}{txt}")

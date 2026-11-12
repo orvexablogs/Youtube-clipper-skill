@@ -41,7 +41,7 @@ pico de uso de 19:00–22:00 en México, Centroamérica y el público hispano de
 
 ## Shorts de monigotes (stickman)
 
-`stickman_short.py` dibuja con código escenas animadas de monigotes (sin fotos ni licencias),
+`stickman_short.py` (temas `light`, `dark` y `8bit`) dibuja con código escenas animadas de monigotes (sin fotos ni licencias),
 con la misma voz, los subtítulos palabra a palabra y un "whoosh" suave en cada corte.
 Necesita Pillow y numpy además de lo anterior.
 
