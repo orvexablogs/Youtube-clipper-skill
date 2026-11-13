@@ -206,7 +206,6 @@ class Cv:
         for x, y, s, size, c, anchor in self.texts:
             px = max(24, int(size * C.get("fscale", 1) / 6) * 6)
             f = load_font(FONT_DIR / C["font"], px)
-            d.text((x + 6, y + 6), s, font=f, fill=(0, 0, 0), anchor=anchor)  # sombra de 1 píxel
             d.text((x, y), s, font=f, fill=c, anchor=anchor)
         return img
 
@@ -766,7 +765,10 @@ def scene_icons(cv, t, D, o):
         cv.circle((cx, cy - 20), 135 * k, fill=C["soft"])
         emoji(cv, ic, (cx, cy - 20), 190 if cols < 3 else 160, k)
         if k > 0.5:
-            cv.text((cx, cy + 170), lab.upper(), 62, C["ink"])
+            sz, maxw = 62, (300 if cols == 3 else 400)
+            while sz > 36 and font(sz * SS).getlength(lab.upper()) / SS > maxw:
+                sz -= 4
+            cv.text((cx, cy + 170), lab.upper(), sz, C["ink"])
         end = 0.15 + n * o.get("step", 0.35) + 0.25 + i * 0.12
         if o.get("strike") and t > end:
             p = ease((t - end) / 0.2)
