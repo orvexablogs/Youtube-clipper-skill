@@ -1374,6 +1374,56 @@ def narrate_lines(lines, voice, work):
     return segs, words, total, voz
 
 
+LW, LH = 1920, 1080
+_side_cache = {}
+
+
+def land_frame(img, ci, chapters):
+    """Vídeo largo 16:9: la animación vertical en el centro, el capítulo a la izquierda y la línea de tiempo a la derecha."""
+    bg = img.getpixel((6, 6))
+    key = (ci, bg)
+    if key not in _side_cache:
+        side = Image.new("RGB", (LW, LH), bg)
+        d = ImageDraw.Draw(side)
+        ink, gold, grey = C["ink"], C["gold"], C["grey"]
+        if 0 <= ci < len(chapters):
+            f = load_font(FONT, 92)
+            words, rows, cur = chapters[ci].upper().split(), [], ""
+            for w_ in words:
+                if cur and d.textlength(cur + " " + w_, font=f) > 560:
+                    rows.append(cur)
+                    cur = w_
+                else:
+                    cur = (cur + " " + w_).strip()
+            rows.append(cur)
+            y = LH // 2 - len(rows) * 55
+            for r_ in rows:
+                d.text((328, y), r_, font=f, fill=ink, anchor="mt")
+                y += 110
+            d.rectangle((228, y + 10, 428, y + 22), fill=gold)
+        fs = load_font(FONT, 40)
+        n = len(chapters)
+        if n:
+            gap = min(110, 860 // max(n, 1))
+            y0 = LH // 2 - gap * (n - 1) // 2
+            d.line((1330, y0, 1330, y0 + gap * (n - 1)), fill=grey, width=6)
+            for k, ch in enumerate(chapters):
+                yy = y0 + gap * k
+                col = gold if k == ci else (ink if k < ci else grey)
+                r = 20 if k == ci else 12
+                d.ellipse((1330 - r, yy - r, 1330 + r, yy + r), fill=col, outline=ink, width=4)
+                d.text((1372, yy), ch.upper(), font=load_font(FONT, 46 if k == ci else 36), fill=col, anchor="lm")
+        _side_cache[key] = side
+    out = _side_cache[key].copy()
+    pw = int(W * LH / H)
+    panel = img.resize((pw, LH), Image.BILINEAR)
+    x = (LW - pw) // 2
+    out.paste(panel, (x, 0))
+    d = ImageDraw.Draw(out)
+    d.rectangle((x - 4, -10, x + pw + 3, LH + 10), outline=C["ink"], width=8)
+    return out
+
+
 def main(spec_path):
     global AMP, CUR_T
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
@@ -1405,11 +1455,15 @@ def main(spec_path):
     def ts(x):
         return f"{int(x // 3600)}:{int(x % 3600 // 60):02d}:{x % 60:05.2f}"
 
-    ass = ["[Script Info]", "PlayResX: 1080", "PlayResY: 1920", "", "[V4+ Styles]",
+    land = bool(spec.get("landscape"))
+    pw_, ph_ = (LW, LH) if land else (W, H)
+    sub_size = 100 if land else C.get('sub_size', 124)
+    sub_pos = f"960,{spec.get('sub_y', 975)}" if land else f"540,{C.get('sub_y', 1660)}"
+    ass = ["[Script Info]", f"PlayResX: {pw_}", f"PlayResY: {ph_}", "", "[V4+ Styles]",
            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
            "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
            "MarginL, MarginR, MarginV, Encoding",
-           f"Style: W,{C.get('sub_font', 'Anton')},{C.get('sub_size', 124)},&H00FFFFFF,&H00FFFFFF,&H00000000,"
+           f"Style: W,{C.get('sub_font', 'Anton')},{sub_size},&H00FFFFFF,&H00FFFFFF,&H00000000,"
            f"&H64000000,0,0,0,0,100,100,1,0,1,{8 if C.get('pixel') else 7},{0 if C.get('pixel') else 2},"
            "5,60,60,0,1",
            "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
@@ -1429,13 +1483,13 @@ def main(spec_path):
                            if j == k else x[2].upper()
                            for j, x in enumerate(ch))
             pop = "{\\fscx112\\fscy112\\t(0,90,\\fscx100\\fscy100)}" if k == 0 else ""
-            ass.append(f"Dialogue: 0,{ts(s)},{ts(end)},W,,0,0,0,,{{\\pos(540,{C.get('sub_y', 1660)})}}{pop}{txt}")
+            ass.append(f"Dialogue: 0,{ts(s)},{ts(end)},W,,0,0,0,,{{\\pos({sub_pos})}}{pop}{txt}")
     subs = work / "subs.ass"
     subs.write_text("\n".join(ass), encoding="utf-8")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     ff = subprocess.Popen(
-        ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+        ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{pw_}x{ph_}", "-r", str(FPS),
          "-i", "-", "-i", str(voz), "-i", str(sfx), "-filter_complex",
          f"[0:v]subtitles={subs}:fontsdir={FONT_DIR}[v];[2:a]volume=0.35[s];"
          f"[1:a][s]amix=inputs=2:duration=first:normalize=0[a]",
@@ -1444,6 +1498,12 @@ def main(spec_path):
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart", str(out)],
         stdin=subprocess.PIPE)
     nframes = int(math.ceil(total * FPS))
+    chapters, seg_ch = [], []
+    for sg in segs:
+        chp = sg["o"].get("chapter")
+        if chp and chp not in chapters:
+            chapters.append(chp)
+        seg_ch.append(chapters.index(chp) if chp else (seg_ch[-1] if seg_ch else -1))
     si = 0
     for n in range(nframes):
         tt = n / FPS
@@ -1451,7 +1511,12 @@ def main(spec_path):
             si += 1
         s = segs[si]
         CUR_T = tt
-        ff.stdin.write(frame(s["o"], tt - s["start"], s["dur"]).tobytes())
+        im = frame(s["o"], tt - s["start"], s["dur"])
+        if land:
+            im = land_frame(im, seg_ch[si], chapters)
+        ff.stdin.write(im.tobytes())
+        if n % (FPS * 30) == 0:
+            print(f"  {tt:.0f}/{total:.0f} s", flush=True)
     ff.stdin.close()
     if ff.wait():
         sys.exit("ffmpeg falló")
