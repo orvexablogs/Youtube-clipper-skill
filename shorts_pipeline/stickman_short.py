@@ -931,6 +931,305 @@ def scene_question(cv, t, D, o):
     kinetic(cv, o.get("big", ""), t, 1180, o.get("size", 96), step=0.09)
 
 
+# ---------------------------------------------------------------- escenas de cuerpo (huesos, órganos)
+def clamp01(x):
+    return max(0.0, min(1.0, x))
+
+
+def bone(cv, a, b, w, col=None, out=None):
+    """Hueso de dibujo: barra con dos nudos en cada punta."""
+    col, out = col or (250, 248, 238), out or C["ink"]
+    d = (b[0] - a[0], b[1] - a[1])
+    L_ = math.hypot(*d) or 1
+    nx, ny = -d[1] / L_, d[0] / L_
+    for p in (a, b):
+        for s_ in (-1, 1):
+            cv.circle((p[0] + nx * w * 0.55 * s_, p[1] + ny * w * 0.55 * s_), w * 0.62 + 4, fill=out)
+    cv.line(a, b, w + 8, out)
+    for p in (a, b):
+        for s_ in (-1, 1):
+            cv.circle((p[0] + nx * w * 0.55 * s_, p[1] + ny * w * 0.55 * s_), w * 0.62, fill=col)
+    cv.line(a, b, w, col)
+
+
+def skeleton_parts(cx=540, top=430, s=1.0):
+    """Lista de huesos (tipo, datos) de un esqueleto de frente, de la cabeza a los pies."""
+    P = lambda x, y: (cx + x * s, top + y * s)
+    parts = [("skull", P(0, 90), 95 * s)]
+    for i in range(6):
+        parts.append(("bone", P(0, 210 + i * 52), P(0, 245 + i * 52), 26 * s))
+    for i in range(5):
+        y = 270 + i * 46
+        parts.append(("rib", P(0, y), 150 * s - i * 10 * s, 30 * s))
+    parts += [("pelvis", P(0, 560), 120 * s),
+              ("bone", P(-150, 240), P(-200, 420), 26 * s), ("bone", P(150, 240), P(200, 420), 26 * s),
+              ("bone", P(-200, 440), P(-220, 610), 22 * s), ("bone", P(200, 440), P(220, 610), 22 * s),
+              ("bone", P(-70, 620), P(-85, 860), 30 * s), ("bone", P(70, 620), P(85, 860), 30 * s),
+              ("bone", P(-85, 885), P(-90, 1110), 26 * s), ("bone", P(85, 885), P(90, 1110), 26 * s)]
+    return parts
+
+
+def draw_part(cv, p, dy=0.0, dx=0.0):
+    kind = p[0]
+    sh = lambda q: (q[0] + dx, q[1] + dy)
+    ink, ivory = C["ink"], (250, 248, 238)
+    if kind == "skull":
+        c, r = sh(p[1]), p[2]
+        cv.circle(c, r + 6, fill=ink)
+        cv.circle(c, r, fill=ivory)
+        cv.rect(c[0] - r * 0.55, c[1] + r * 0.5, c[0] + r * 0.55, c[1] + r * 1.05, fill=ivory, outline=ink, w=6, rad=14)
+        for s_ in (-1, 1):
+            cv.circle((c[0] + s_ * r * 0.38, c[1] + r * 0.05), r * 0.24, fill=ink)
+        cv.poly([(c[0], c[1] + r * 0.3), (c[0] - r * 0.1, c[1] + r * 0.5), (c[0] + r * 0.1, c[1] + r * 0.5)], ink)
+    elif kind == "bone":
+        bone(cv, sh(p[1]), sh(p[2]), p[3])
+    elif kind == "rib":
+        c, w_, th = sh(p[1]), p[2], p[3]
+        for s_ in (-1, 1):
+            pts = [(c[0] + s_ * w_ * math.sin(math.radians(a)), c[1] + w_ * 0.28 * (1 - math.cos(math.radians(a))))
+                   for a in range(0, 100, 10)]
+            cv.path(pts, th * 0.55 + 8, ink)
+            cv.path(pts, th * 0.55, ivory)
+    elif kind == "pelvis":
+        c, r = sh(p[1]), p[2]
+        cv.circle(c, r * 0.75 + 6, fill=ink)
+        cv.circle(c, r * 0.75, fill=ivory)
+        cv.circle((c[0], c[1] + r * 0.15), r * 0.32, fill=C["bg"], outline=ink, w=6)
+
+
+def scene_xray(cv, t, D, o):
+    """Esqueleto con contador. o: mode "lose" (los huesos se caen) o "build" (vuelan a su sitio)."""
+    parts = skeleton_parts(top=450, s=0.9)
+    n = len(parts)
+    build = o.get("mode") == "build"
+    cv.rect(160, 330, 920, 1640, fill=mix(C["bg"], (20, 30, 60), 0.8), outline=C["ink"], w=10, rad=40)
+    shown = 0
+    for i, p in enumerate(parts):
+        k0 = (i / n) * 0.75
+        if build:
+            k = ease(clamp01((t / D - k0 * 0.8) / 0.18))
+            if k <= 0:
+                continue
+            rnd = random.Random(i)
+            dx = (1 - k) * rnd.uniform(-700, 700)
+            dy = (1 - k) * rnd.uniform(-900, -300)
+            draw_part(cv, p, dy, dx)
+            shown += k >= 1
+        else:
+            k = clamp01((t / D - 0.1 - k0 * 0.85) / 0.12)
+            if k >= 1:
+                continue
+            draw_part(cv, p, dy=1400 * k * k)
+            shown += k <= 0
+    cnt = int(round(206 * shown / n))
+    cv.rect(300, 1470, 780, 1600, fill=C["ink"], outline=C["gold"], w=6, rad=24)
+    cv.text((540, 1537), f"HUESOS: {cnt}", 84, C["gold"] if cnt else C["red"])
+
+
+def blob(cv, c, rx, ry, col, face="neutral", eyes_dx=0.0):
+    ink = C["ink"]
+    cv.d.ellipse([*cv.P((c[0] - rx - 7, c[1] - ry - 7)), *cv.P((c[0] + rx + 7, c[1] + ry + 7))], fill=ink)
+    cv.d.ellipse([*cv.P((c[0] - rx, c[1] - ry)), *cv.P((c[0] + rx, c[1] + ry))], fill=col)
+    ey = c[1] - ry * 0.25
+    for s_ in (-1, 1):
+        ex = c[0] + eyes_dx + s_ * min(rx * 0.25, 60)
+        cv.circle((ex, ey), 22, fill=(255, 255, 255))
+        cv.circle((ex + 6, ey + 4), 11, fill=ink)
+    mx = c[0] + eyes_dx
+    if face == "sad":
+        cv.path([(mx - 40, ey + 62), (mx, ey + 44), (mx + 40, ey + 62)], 8, ink)
+    else:
+        cv.path([(mx - 40 + i * 20, ey + 50 + (8 if i % 2 else -4)) for i in range(5)], 8, ink)
+
+
+def scene_melt(cv, t, D, o):
+    """El monigote se queda sin huesos y se derrite en un charco con cara."""
+    ground(cv)
+    k = ease(clamp01((t / D - 0.12) / 0.55))
+    wob = math.sin(t * 9) * 12 * (1 - k)
+    if k < 0.82:
+        hip_y = GROUND - 0.47 * 520 * (1 - k)
+        pose = dict(lean=wob * 0.6 + 35 * k * math.sin(t * 4), head=40 * k + wob,
+                    aL1=-10 - 70 * k, aL2=-10 - 120 * k, aR1=10 + 70 * k, aR2=10 + 120 * k,
+                    lL1=-7 - 60 * k, lL2=-70 * k, lR1=7 + 60 * k, lR2=70 * k)
+        figure(cv, (540, hip_y), pose, face="shock" if k > 0.1 else "neutral", facing=0)
+    kp = clamp01((k - 0.45) / 0.55)
+    if kp > 0:
+        rx = 80 + 330 * ease(kp) + math.sin(t * 6) * 8
+        ry = 70 - 15 * kp
+        blob(cv, (540, GROUND - ry * 0.6), rx, ry, C["shirt"], face="sad" if kp > 0.9 else "neutral")
+        for i in range(3):
+            dx = (-1) ** i * (140 + i * 60) * kp
+            cv.circle((540 + dx, GROUND - 4), 18 * kp, fill=mix(C["shirt"], (255, 255, 255), 0.35))
+
+
+def scene_crawl(cv, t, D, o):
+    """Carrera: el charco-persona repta y una lombriz le adelanta."""
+    ground(cv)
+    cv.line((120, 360), (120, GROUND), 7, C["ink"])
+    cv.rect(110, 360, 260, 450, fill=C["red"], rad=8)
+    cv.text((185, 405), "META", 44, (255, 255, 255))
+    p = (math.sin(t * 7) + 1) / 2
+    x_b = 900 - 55 * t - 30 * p
+    blob(cv, (x_b, GROUND - 80), 210 + 50 * p, 80 - 16 * p, C["shirt"], face="sad", eyes_dx=-70)
+    cv.path([(x_b + 160, GROUND - 6), (min(1000, x_b + 420), GROUND - 6)], 10, mix(C["shirt"], C["bg"], 0.5))
+    x_w = 980 - 170 * t
+    emoji(cv, o.get("rival", "🪱"), (x_w, GROUND - 110 - 25 * abs(math.sin(t * 8))), 240)
+    if t > D * 0.55:
+        cv.text((max(x_w, 260), GROUND - 300), "¡ADIÓS!", 90, C["ink"])
+
+
+def scene_shield(cv, t, D, o):
+    """Órganos sin protección: un balón viene y ¡pum!"""
+    c = (540, 980)
+    keff = clamp01(t / (D * 0.3))
+    # el casco (cráneo) se desvanece en líneas discontinuas
+    for a in range(0, 360, 20):
+        if (a // 20) % 2 == 0:
+            p1 = add(c, V(a), 250)
+            p2 = add(c, V(a + 12), 250)
+            cv.line(p1, p2, 12, mix(C["ink"], C["bg"], keff * 0.75))
+    hit = clamp01((t / D - 0.45) / 0.12)
+    squash = 1 - 0.35 * math.sin(math.pi * hit) if 0 < hit < 1 else 1
+    emoji(cv, o.get("organ", "🧠"), c, int(330 * squash) if squash < 1 else 330)
+    bx = 1200 - 900 * clamp01(t / D / 0.5)
+    if hit < 1:
+        emoji(cv, "⚽", (bx, 760 + 0.0009 * (bx - 700) ** 2), 170)
+    else:
+        rb = clamp01((t / D - 0.57) / 0.4)
+        emoji(cv, "⚽", (700 + 500 * rb, 760 - 500 * rb + 900 * rb * rb), 170)
+    if 0.45 < t / D < 0.85:
+        cv.text((540, 640), "¡AY!", 150, C["red"], stroke=10, stroke_c=C["ink"])
+        for a in range(0, 360, 45):
+            cv.line(add(c, V(a), 290), add(c, V(a), 360), 14, C["gold"])
+
+
+def rbc(cv, c, r):
+    cv.circle(c, r + 4, fill=C["ink"])
+    cv.circle(c, r, fill=(214, 40, 50))
+    cv.circle(c, r * 0.45, fill=(170, 25, 35))
+
+
+def scene_factory(cv, t, D, o):
+    """Un hueso-fábrica que suelta glóbulos rojos por una cinta; al final, CERRADO."""
+    closed = o.get("close") and t > D * 0.62
+    bone(cv, (230, 760), (850, 760), 190)
+    cv.rect(470, 700, 610, 830, fill=C["ink"] if closed else (120, 60, 50), rad=12)
+    cv.text((540, 935), "MÉDULA", 70, C["ink"])
+    for i in range(3):
+        cx = 360 + i * 180
+        cv.rect(cx - 22, 560 - (40 if i == 1 else 0), cx + 22, 680, fill=C["grey"], outline=C["ink"], w=6, rad=6)
+        if not closed:
+            for j in range(3):
+                ph = (t * 0.8 + j / 3 + i * 0.2) % 1
+                cv.circle((cx + 10 * math.sin(ph * 6), 520 - (40 if i == 1 else 0) - ph * 220), 20 + 30 * ph,
+                          fill=mix(C["grey"], C["bg"], ph))
+    cv.rect(140, 1180, 940, 1220, fill=C["ink"], rad=20)
+    for i in range(9):
+        cv.circle((180 + i * 90, 1200), 14, fill=C["grey"])
+    speed = 0 if closed else 260
+    for i in range(10):
+        x = (600 + t * speed + i * 110) % 1000 - 40 if not closed else 180 + i * 90
+        if 540 < x < 1000 or closed:
+            if closed and i > 3:
+                continue
+            rbc(cv, (x if not closed else x, 1135), 38)
+    if not closed:
+        k = clamp01((t % 0.5) / 0.5)
+        rbc(cv, (540, 830 + 300 * k), 38)
+    cv.text((540, 1420), o.get("counter", "+ MILLONES / SEGUNDO"), 70, C["red"] if not closed else C["grey"])
+    if closed:
+        k = pop(t, D * 0.62)
+        cv.rect(260, 880, 820, 1040, fill=C["red"], outline=C["ink"], w=10, rad=20)
+        cv.text((540, 962), "CERRADO", 120 * max(k, 0.3), (255, 255, 255))
+
+
+def scene_ear(cv, t, D, o):
+    """Ondas de sonido que pasan por martillo, yunque y estribo (se iluminan en cadena)."""
+    names = o.get("names", ["martillo", "yunque", "estribo"])
+    emoji(cv, "👂", (220, 700), 300)
+    for i in range(5):
+        ph = (t * 1.2 + i / 5) % 1
+        r = 60 + ph * 260
+        for a in range(-40, 41, 8):
+            pass
+        pts = [add((520, 700), V(a + 180 + 90), -r) for a in range(-45, 46, 9)]
+        pts = [(1000 - (q[0] - 520) - 480 + 520, q[1]) for q in pts]
+        cv.path(pts, 10, mix(C["ink"], C["bg"], ph))
+    xs = [300, 540, 780]
+    for i, (x, nm) in enumerate(zip(xs, names)):
+        on = math.sin(t * 6 - i * 1.4) > 0.3
+        col = C["gold"] if on else (250, 248, 238)
+        if i == 0:
+            bone(cv, (x - 70, 1050), (x + 60, 1130), 34, col)
+        elif i == 1:
+            bone(cv, (x - 60, 1080), (x + 60, 1080), 40, col)
+            bone(cv, (x, 1080), (x + 20, 1180), 30, col)
+        else:
+            cv.path([(x - 70, 1150), (x - 40, 1040), (x + 40, 1040), (x + 70, 1150)], 46, C["ink"])
+            cv.path([(x - 70, 1150), (x - 40, 1040), (x + 40, 1040), (x + 70, 1150)], 30, col)
+        cv.text((x, 1290), nm.upper(), 58, C["ink"])
+        if i < 2:
+            cv.line((x + 90, 1100), (x + 140, 1100), 8, C["ink"])
+    cv.text((540, 1420), "LOS HUESOS MÁS PEQUEÑOS", 56, C["red"])
+
+
+def octopus(cv, c, s, t, col=(232, 110, 140)):
+    ink = C["ink"]
+    rx, ry = 110 * s, 140 / max(s, 0.45) ** 0.5
+    for i in range(8):
+        base = (c[0] - rx * 0.6 + i * rx * 1.2 / 7, c[1] + ry * 0.6)
+        pts = []
+        for j in range(8):
+            u = j / 7
+            pts.append((base[0] - 230 * u + 25 * math.sin(t * 5 + i + u * 5), base[1] + 40 * u * math.sin(i)))
+        cv.path(pts, 30 * (1 - 0.4 * 0) + 8, ink)
+        cv.path(pts, 30, col)
+    cv.d.ellipse([*cv.P((c[0] - rx - 7, c[1] - ry - 7)), *cv.P((c[0] + rx + 7, c[1] + ry + 7))], fill=ink)
+    cv.d.ellipse([*cv.P((c[0] - rx, c[1] - ry)), *cv.P((c[0] + rx, c[1] + ry))], fill=col)
+    for s_ in (-1, 1):
+        cv.circle((c[0] + s_ * rx * 0.4, c[1] + ry * 0.15), 18, fill=(255, 255, 255))
+        cv.circle((c[0] + s_ * rx * 0.4 + 5, c[1] + ry * 0.18), 9, fill=ink)
+
+
+def scene_octopus(cv, t, D, o):
+    """Un pulpo se escurre por un agujero diminuto de una pared, bajo el agua."""
+    cv.rect(-50, 380, 1130, 1700, fill=mix(C["bg"], (40, 120, 200), 0.55))
+    rnd = random.Random(4)
+    for i in range(14):
+        x = rnd.uniform(60, 1020)
+        y = 1650 - ((t * rnd.uniform(80, 160) + rnd.uniform(0, 1200)) % 1250)
+        cv.circle((x, y), rnd.uniform(8, 18), outline=(255, 255, 255), w=4)
+    hx, hy, hr = 560, 1000, 46
+    cv.rect(520, 380, 600, hy - hr, fill=C["grey"], outline=C["ink"], w=8)
+    cv.rect(520, hy + hr, 600, 1700, fill=C["grey"], outline=C["ink"], w=8)
+    x = 200 + 760 * ease(clamp01((t / D - 0.1) / 0.7))
+    dist = abs(x - hx)
+    s = 0.3 + 0.7 * clamp01((dist - 60) / 220)
+    octopus(cv, (x, hy - 30 * (1 - s)), s, t)
+    cv.rect(520, 380, 600, hy - hr, fill=C["grey"], outline=C["ink"], w=8)
+    cv.rect(520, hy + hr, 600, 1700, fill=C["grey"], outline=C["ink"], w=8)
+    cv.text((540, 470), o.get("caption", "SIN HUESOS, SIN PROBLEMA"), 66, C["ink"])
+
+
+def scene_send(cv, t, D, o):
+    """Uno manda el vídeo y el avión de papel le llega al amigo «hecho polvo»."""
+    ground(cv)
+    J = figure(cv, (230, 0), dict(aR1=60, aR2=110), facing=1, ground=GROUND)
+    phone(cv, (J["hR"][0] + 10, J["hR"][1] + 30))
+    figure(cv, (850, GROUND - 120), dict(lean=-70, head=-20, lL1=80, lL2=80, lR1=90, lR2=90, aL1=40, aR1=50),
+           face="tired", facing=-1)
+    for i in range(10):
+        ph = (t * 0.6 + i / 10) % 1
+        cv.circle((780 + 160 * math.sin(i * 2.1) * ph, GROUND - 150 - 160 * ph), 16 * (1 - ph),
+                  fill=mix(C["grey"], C["bg"], ph))
+    k = ease(clamp01((t / D - 0.2) / 0.5))
+    px, py = 300 + 480 * k, 900 - 350 * math.sin(math.pi * k)
+    emoji(cv, o.get("icon", "📩"), (px, py), 200)
+    if k >= 1:
+        cv.text((850, 950), o.get("txt", "¡JAJA!"), 90, C["red"], stroke=8, stroke_c=C["ink"])
+
+
 SCENES = {k[6:]: v for k, v in globals().items() if k.startswith("scene_")}
 SCENES["sad"] = scene_walk
 
@@ -941,7 +1240,7 @@ def label_box(cv, txt, y, size=96):
     cv.text((540, y), txt, size, C["gold"])
 
 
-ZOOM = dict(think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
+ZOOM = dict(xray=1.0, melt=1.05, crawl=1.0, shield=1.0, factory=1.0, ear=1.0, octopus=1.0, send=1.0, think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
 
 
 def render(o, t, D, z=1.0):
