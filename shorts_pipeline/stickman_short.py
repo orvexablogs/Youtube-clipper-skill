@@ -73,6 +73,14 @@ THEMES = {
     "toon": dict(bg=(15, 15, 21), ink=(246, 243, 236), gold=(236, 178, 62), grey=(128, 128, 140),
                  red=(232, 72, 72), soft=(26, 26, 34), glow=(70, 60, 30), box=(0, 0, 0), grid=(15, 15, 21),
                  toon=True, sub_y=900, sub_size=100),
+    # Monigotes "gráficos": cuerpos de color con contorno, piel, pelo y ropa, sobre fondos
+    # pastel que cambian en cada frase. Sirve con todas las escenas (monigotes y tarjetas).
+    "color": dict(bg=(150, 210, 240), ink=(34, 30, 44), gold=(232, 84, 60), grey=(120, 120, 135),
+                  red=(220, 50, 60), soft=(255, 255, 255), glow=(255, 236, 160), box=(34, 30, 44),
+                  filled=True, shirt=(66, 133, 244), pants=(52, 58, 92), skin=(248, 204, 168),
+                  hair=(58, 40, 34), shoe=(250, 250, 250),
+                  bgs=[(150, 210, 240), (255, 214, 120), (170, 228, 190), (255, 190, 200),
+                       (205, 190, 245), (255, 205, 160)]),
     # Motion graphics sin personajes: fondo casi negro con rejilla, oro y blanco.
     "mg": dict(bg=(13, 13, 17), ink=(246, 243, 236), gold=(236, 191, 88), grey=(128, 128, 140),
                red=(232, 72, 72), soft=(28, 28, 36), glow=(70, 60, 30), box=(0, 0, 0), grid=(22, 22, 29)),
@@ -244,6 +252,11 @@ def figure(cv, hip, pose=None, h=520, col=None, face="neutral", facing=1, rot=0,
     if ground is not None:
         low = max(fL[1], fR[1], kL[1], kR[1], hip[1], hd[1] + r) + lw / 2
         J = {k: (v[0], v[1] + ground - low) for k, v in J.items()}
+    if C.get("filled"):
+        draw_filled(cv, J, h, r, lw, tor + f * p["head"], col if col != C["ink"] else C["shirt"])
+        draw_face(cv, J["head"], r, tor + f * p["head"], face, 0 if facing == 0 else f, C["ink"], lw)
+        J["r"], J["lw"], J["f"] = r, lw, f
+        return J
     for a, b, c in (("hip", "kL", "fL"), ("hip", "kR", "fR"), ("sho", "eL", "hL"), ("sho", "eR", "hR")):
         cv.path([J[a], J[b], J[c]], lw, col)
     cv.line(J["hip"], J["neck"], lw, col)
@@ -251,6 +264,40 @@ def figure(cv, hip, pose=None, h=520, col=None, face="neutral", facing=1, rot=0,
     draw_face(cv, J["head"], r, tor + f * p["head"], face, 0 if facing == 0 else f, col, lw)
     J["r"], J["lw"], J["f"] = r, lw, f
     return J
+
+
+def draw_filled(cv, J, h, r, lw, head_ang, shirt):
+    """Monigote "gráfico": cuerpo en cápsula de color, brazos y piernas gruesos con
+    contorno, zapatillas, manos y cabeza color piel con pelo. Mismo esqueleto y poses."""
+    ink, pants, skin, hair = C["ink"], C["pants"], C["skin"], C["hair"]
+    o = lw * 0.55
+    for a, b, c in (("hip", "kL", "fL"), ("hip", "kR", "fR")):
+        cv.path([J[a], J[b], J[c]], lw * 2.0 + o, ink)
+        cv.path([J[a], J[b], J[c]], lw * 2.0, pants)
+        cv.circle(J[c], lw * 1.35 + o / 2, fill=ink)
+        cv.circle(J[c], lw * 1.35, fill=C["shoe"])
+    cv.line(J["hip"], J["sho"], 0.2 * h + o, ink)
+    cv.line(J["hip"], J["sho"], 0.2 * h, shirt)
+    for a, b, c in (("sho", "eL", "hL"), ("sho", "eR", "hR")):
+        cv.path([J[a], J[b], J[c]], lw * 1.7 + o, ink)
+        cv.path([J[a], J[b], J[c]], lw * 1.7, shirt)
+        cv.circle(J[c], lw * 1.25 + o / 2, fill=ink)
+        cv.circle(J[c], lw * 1.25, fill=skin)
+    hd = J["head"]
+    cv.circle(hd, r * 1.12 + o / 2, fill=ink)
+    cv.circle(hd, r * 1.12, fill=skin)
+    up, right = V(head_ang), V(head_ang + 90)
+    pts = []
+    for i in range(15):
+        a = math.radians(200 + 140 * i / 14)
+        x, y = math.cos(a) * 1.2, -math.sin(a) * 1.2
+        pts.append((hd[0] + (x * right[0] + y * up[0]) * r, hd[1] + (x * right[1] + y * up[1]) * r))
+    for x, y in ((0.9, 0.35), (0.3, 0.55), (-0.4, 0.5), (-0.95, 0.3)):
+        pts.append((hd[0] + (x * right[0] + y * up[0]) * r, hd[1] + (x * right[1] + y * up[1]) * r))
+    cv.poly(pts, hair)
+    for s_ in (-1, 1):
+        cx, cy = hd[0] + (s_ * 0.55 * right[0] - 0.3 * up[0]) * r, hd[1] + (s_ * 0.55 * right[1] - 0.3 * up[1]) * r
+        cv.circle((cx, cy), r * 0.17, fill=mix(skin, (240, 110, 110), 0.45))
 
 
 def draw_face(cv, c, r, ang, face, f, col, lw):
@@ -896,6 +943,8 @@ ZOOM = dict(think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, d
 
 
 def render(o, t, D, z=1.0):
+    if C.get("bgs"):
+        C["bg"] = o.get("_bg", C["bgs"][0])
     cv = Cv(z=z, cy=1060)
     if C.get("grid"):
         z0, cv.z = cv.z, 1.0
@@ -1258,6 +1307,11 @@ def narrate_flow(lines, voice, work, rate="+8%", pitch="-3Hz"):
     segs = []
     for i, ln in enumerate(lines):
         end = starts[i + 1] if i + 1 < len(lines) else total
+        if C.get("bgs"):
+            ln["_bg"] = C["bgs"][i % len(C["bgs"])]
+            for k in ("top", "bottom"):
+                if isinstance(ln.get(k), dict):
+                    ln[k]["_bg"] = ln["_bg"]
         segs.append(dict(dur=max(0.4, end - starts[i]), start=starts[i], o=ln))
     # alargar cada palabra hasta la siguiente para que el subtítulo no parpadee
     words = [(s0, max(e0, words[k + 1][0]) if k + 1 < len(words) and words[k + 1][0] - e0 < 0.35 else e0, w)
