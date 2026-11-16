@@ -793,7 +793,7 @@ def scene_versus(cv, t, D, o):
             cv.text((370 + x_off, y0 + 190 + i * 66), " ".join(w for w, _ in ln).upper(), 58, C["ink"], anchor="lm")
         if "bar" in p:
             v = p["bar"] * ease((t - delay - 0.3) / 0.9)
-            cv.rect(130 + x_off, y0 + 375, 950 + x_off, y0 + 410, fill=C["grid"], rad=17)
+            cv.rect(130 + x_off, y0 + 375, 950 + x_off, y0 + 410, fill=C.get("grid", C["soft"]), rad=17)
             if v > 0.01:
                 cv.rect(130 + x_off, y0 + 375, 130 + 820 * v + x_off, y0 + 410, fill=col, rad=17)
 
@@ -870,7 +870,7 @@ def scene_drain(cv, t, D, o):
     lvl = 1 - (1 - o.get("to", 0.06)) * ease((t - 0.3) / (D - 0.6))
     col = C["gold"] if lvl > 0.35 else C["red"]
     cv.text((540, 1090), o.get("bar_label", "SUELDO").upper(), 64, C["ink"])
-    cv.rect(150, 1150, 930, 1210, fill=C["grid"], rad=30)
+    cv.rect(150, 1150, 930, 1210, fill=C.get("grid", C["soft"]), rad=30)
     cv.rect(150, 1150, 150 + max(60, 780 * lvl), 1210, fill=col, rad=30)
 
 
@@ -892,7 +892,7 @@ def label_box(cv, txt, y, size=96):
     cv.text((540, y), txt, size, C["gold"])
 
 
-ZOOM = dict(title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
+ZOOM = dict(think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
 
 
 def render(o, t, D, z=1.0):
