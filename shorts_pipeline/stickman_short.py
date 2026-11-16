@@ -12,6 +12,8 @@ spec.json:
   "out": "salida/mi_short.mp4",
   "voice": "es-ES-AlvaroNeural",          (opcional)
   "rate": "+8%", "pitch": "-3Hz",         (opcional; velocidad y tono de la voz)
+  "audio": "locucion.mp3",                (opcional; usa una voz ya grabada, p. ej. de una app,
+                                           en vez de generarla; los tiempos salen con Whisper)
   "tts": "flow" | "lines",                 (opcional; flow = todo el guion en una toma, con
                                            silencios recortados y tiempos reales por palabra)
   "theme": "light" | "dark" | "8bit" | "mg" | "pixel" | "toon",  (opcional; mg = motion graphics,
@@ -1283,6 +1285,27 @@ def narrate_flow(lines, voice, work, rate="+8%", pitch="-3Hz"):
     run(["ffmpeg", "-v", "error", "-y", "-i", str(pcm), "-af", "loudnorm=I=-14:TP=-1.5,aresample=48000",
          "-ac", "1", str(voz)])
     total = duration(voz) + 0.3
+    return align_words(lines, bnd, total, voz)
+
+
+def narrate_external(lines, audio, work):
+    """Usa una locución ya grabada (p. ej. exportada de una app de voz): la normaliza y
+    saca los tiempos de cada palabra con Whisper para cortar escenas y subtítulos."""
+    from faster_whisper import WhisperModel
+    voz = work / "voz.wav"
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(audio), "-vn", "-af",
+         "loudnorm=I=-14:TP=-1.5,aresample=48000", "-ac", "1", str(voz)])
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(voz), "-f", "f32le", "-ac", "1",
+                                   "-ar", "16000", "-"])
+    pcm = np.frombuffer(raw, dtype=np.float32)
+    model = WhisperModel("small", device="cpu", compute_type="int8")
+    segs, _ = model.transcribe(pcm, language="es", word_timestamps=True, condition_on_previous_text=False)
+    bnd = [[w.start, w.end, w.word.strip()] for sg in segs for w in sg.words]
+    (work / "palabras.json").write_text(json.dumps(bnd, ensure_ascii=False), encoding="utf-8")
+    return align_words(lines, bnd, duration(voz) + 0.3, voz, window=6)
+
+
+def align_words(lines, bnd, total, voz, window=4):
     # alinear cada palabra del guion con su marca de tiempo (tolerando signos sueltos)
     words, firsts, j = [], [], 0
     for ln in lines:
@@ -1290,7 +1313,7 @@ def narrate_flow(lines, voice, work, rate="+8%", pitch="-3Hz"):
         for w in ln["text"].split():
             key = norm(w)
             hit = None
-            for k in range(j, min(j + 4, len(bnd))):
+            for k in range(j, min(j + window, len(bnd))):
                 if norm(bnd[k][2]) == key or (key and norm(bnd[k][2]).startswith(key[:4])):
                     hit = k
                     break
@@ -1362,7 +1385,9 @@ def main(spec_path):
     voice = spec.get("voice", "es-ES-AlvaroNeural")
     lines = spec["lines"]
 
-    if spec.get("tts", "flow") == "flow":
+    if spec.get("audio"):
+        segs, words, total, voz = narrate_external(lines, (base / spec["audio"]).resolve(), work)
+    elif spec.get("tts", "flow") == "flow":
         segs, words, total, voz = narrate_flow(lines, voice, work, spec.get("rate", "+8%"), spec.get("pitch", "-3Hz"))
     else:
         segs, words, total, voz = narrate_lines(lines, voice, work)
