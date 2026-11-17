@@ -1230,6 +1230,355 @@ def scene_send(cv, t, D, o):
         cv.text((850, 950), o.get("txt", "¡JAJA!"), 90, C["red"], stroke=8, stroke_c=C["ink"])
 
 
+# ---------------------------------------------------------------- escenas de espacio (vídeo del Sol)
+SPACE = (14, 18, 40)
+
+
+def space_bg(cv, t, dim=0.0, seed=11, n=90):
+    cv.rect(-60, -60, 1140, 1980, fill=mix(SPACE, (0, 0, 0), dim))
+    rnd = random.Random(seed)
+    for i in range(n):
+        x, y = rnd.uniform(0, 1080), rnd.uniform(0, 1920)
+        tw = 0.6 + 0.4 * math.sin(t * rnd.uniform(1, 3) + i)
+        r = rnd.choice([2, 2, 3, 4])
+        cv.circle((x, y), r, fill=mix(SPACE, (255, 255, 235), tw))
+
+
+def sun(cv, c, R, t, k=1.0):
+    """Sol con rayos que giran; k escala (0 = no está)."""
+    if k <= 0.02:
+        return
+    R = R * k
+    for i in range(16):
+        a = i * 22.5 + t * 12
+        p1, p2 = add(c, V(a), R * 1.08), add(c, V(a), R * (1.35 + 0.08 * math.sin(t * 4 + i)))
+        cv.line(p1, p2, R * 0.09, (255, 196, 40))
+    cv.circle(c, R * 1.04, fill=(240, 140, 30))
+    cv.circle(c, R, fill=(255, 205, 50))
+    cv.circle((c[0] - R * 0.3, c[1] - R * 0.3), R * 0.35, fill=(255, 230, 120))
+
+
+def earth(cv, c, r, ice=0.0):
+    ink = C["ink"]
+    cv.circle(c, r + 5, fill=ink)
+    cv.circle(c, r, fill=mix((60, 130, 220), (235, 245, 255), ice))
+    for dx, dy, rr in ((-0.35, -0.2, 0.32), (0.3, 0.25, 0.28), (0.25, -0.45, 0.18)):
+        cv.circle((c[0] + dx * r, c[1] + dy * r), rr * r, fill=mix((80, 180, 90), (250, 250, 255), ice))
+
+
+def puff(cv, c, k, col=(255, 220, 120)):
+    for i in range(10):
+        p = add(c, V(i * 36), 60 + 260 * k)
+        cv.circle(p, 40 * (1 - k), fill=mix(col, SPACE, k))
+
+
+def scene_sun(cv, t, D, o):
+    """El Sol. o.mode: "shine" (normal), "vanish" (¡puf!, desaparece), "gone" (hueco vacío)."""
+    space_bg(cv, t)
+    c = (540, 860)
+    mode = o.get("mode", "shine")
+    if mode == "shine":
+        sun(cv, c, 260, t, 1 + 0.03 * math.sin(t * 3))
+    elif mode == "vanish":
+        k = clamp01((t / D - 0.35) / 0.12)
+        sun(cv, c, 260, t, (1 + 0.15 * math.sin(t * 30) * (t / D > 0.25)) * (1 - k))
+        if k > 0:
+            puff(cv, c, clamp01((t / D - 0.35) / 0.4))
+            if t / D > 0.5:
+                cv.text((540, 1300), "¡PUF!", 170, (255, 230, 120), stroke=10, stroke_c=C["ink"])
+    else:
+        for a in range(0, 360, 24):
+            cv.line(add(c, V(a), 260), add(c, V(a + 12), 260), 8, (90, 90, 120))
+        cv.text(c, "?", 220, (90, 90, 120))
+    if o.get("caption"):
+        cv.text((540, 1380), o["caption"], 64, (255, 255, 255))
+
+
+def scene_light(cv, t, D, o):
+    """Luz que viaja del Sol a la Tierra con un cronómetro (8 min 20 s). o.gone: el Sol ya no está."""
+    space_bg(cv, t)
+    s, e = (540, 420), (540, 1330)
+    sun(cv, s, 130, t, 0 if o.get("gone") else 1)
+    if o.get("gone"):
+        cv.circle(s, 130, outline=(90, 90, 120), w=6)
+    earth(cv, e, 95)
+    k = clamp01(t / D)
+    for i in range(6):
+        q = clamp01(k * 1.1 - i * 0.05)
+        if 0 < q < 1:
+            y = s[1] + 150 + (e[1] - 110 - s[1] - 150) * q
+            cv.circle((540 + 18 * math.sin(y / 40 + i), y), 22, fill=(255, 230, 120))
+    secs = int(500 * k)
+    cv.rect(700, 820, 1010, 940, fill=C["ink"], rad=20)
+    cv.text((855, 880), f"{secs // 60}:{secs % 60:02d}", 84, (255, 230, 120))
+    cv.text((855, 975), "MIN", 44, (255, 255, 255))
+
+
+def scene_orbit(cv, t, D, o):
+    """La Tierra gira; con o.mode="fly" sigue en línea recta cuando el Sol falta; "ghost": gira alrededor de nada."""
+    space_bg(cv, t)
+    c, R = (540, 900), 360
+    mode = o.get("mode", "orbit")
+    for a in range(0, 360, 10):
+        cv.line(add(c, V(a), R), add(c, V(a + 5), R), 4, (70, 80, 120))
+    if mode == "ghost":
+        cv.circle(c, 110, outline=(90, 90, 120), w=6)
+        cv.text(c, "NADA", 60, (90, 90, 120))
+        ang = 200 + t * 30
+        earth(cv, add(c, V(ang), R), 60)
+        cv.text((540, 1420), "ÓRBITA FANTASMA", 66, (255, 230, 120))
+        return
+    if mode == "fly":
+        a0 = 90
+        p0 = add(c, V(a0), R)
+        k = clamp01(t / D)
+        p = (p0[0] - 0 * k, p0[1] - 0)
+        dirv = V(a0 + 90)
+        p = (p0[0] + dirv[0] * 1100 * k, p0[1] + dirv[1] * 1100 * k)
+        cv.path([p0, p], 8, (255, 230, 120))
+        earth(cv, p, 60)
+        cv.text((540, 1420), "¡EN LÍNEA RECTA!", 70, (255, 230, 120))
+        return
+    sun(cv, c, 110, t)
+    earth(cv, add(c, V(t * 40), R), 60)
+
+
+def scene_sky(cv, t, D, o):
+    """Cielo nocturno sobre una ciudad: la Luna se apaga, las estrellas brillan más, un planeta queda encendido."""
+    dark = clamp01(t / (D * 0.5))
+    space_bg(cv, t, seed=3, n=int(70 + 80 * dark))
+    moon = (760, 520)
+    cv.circle(moon, 110, fill=mix((240, 235, 210), SPACE, dark if o.get("moon_off") else 0))
+    if o.get("planet"):
+        blink = 1 - clamp01((t / D - 0.6) / 0.3) if o.get("planet_off") else 1
+        cv.circle((300, 380), 26, fill=mix(SPACE, (255, 210, 150), blink))
+        cv.circle((300, 380), 50, outline=mix(SPACE, (255, 210, 150), blink * 0.5), w=4)
+        cv.text((300, 470), o["planet"].upper(), 50, mix(SPACE, (255, 255, 255), blink))
+    rnd = random.Random(5)
+    x = 0
+    while x < 1080:
+        w_ = rnd.uniform(90, 170)
+        h_ = rnd.uniform(220, 520)
+        cv.rect(x, 1500 - h_, x + w_, 1990, fill=(28, 30, 48), outline=C["ink"], w=4)
+        for wy in range(int(1500 - h_ + 30), 1480, 60):
+            for wx in range(int(x + 20), int(x + w_ - 20), 45):
+                on = rnd.random() < 0.6
+                cv.rect(wx, wy, wx + 22, wy + 30, fill=(255, 220, 120) if on else (45, 48, 70))
+        x += w_ + 8
+    if o.get("caption"):
+        cv.text((540, 200), o["caption"], 64, (255, 255, 255))
+
+
+def scene_thermo(cv, t, D, o):
+    """Termómetro gigante que baja desde o.frm hasta o.to (0-1) con rótulo o.reading."""
+    ink = C["ink"]
+    frm, to = o.get("frm", 0.8), o.get("to", 0.4)
+    lv = frm + (to - frm) * ease(clamp01(t / (D * 0.8)))
+    x0, y0, y1 = 540, 420, 1330
+    cv.rect(x0 - 70, y0 - 20, x0 + 70, y1, fill=(250, 250, 255), outline=ink, w=10, rad=70)
+    cv.circle((x0, y1 + 70), 130, fill=ink)
+    col = mix((60, 140, 230), (230, 60, 50), lv)
+    cv.circle((x0, y1 + 70), 112, fill=col)
+    top = y1 - (y1 - y0) * lv
+    cv.rect(x0 - 42, top, x0 + 42, y1 + 40, fill=col)
+    for i in range(9):
+        y = y0 + 40 + i * 100
+        cv.line((x0 + 75, y), (x0 + 120, y), 8, ink)
+    if o.get("zero"):
+        yz = y1 - (y1 - y0) * o["zero"]
+        cv.line((x0 - 160, yz), (x0 + 160, yz), 6, C["red"])
+        cv.text((x0 - 240, yz), "0°", 70, C["red"])
+    if lv < 0.45:
+        rnd = random.Random(2)
+        for i in range(18):
+            fx = rnd.uniform(80, 1000)
+            fy = (rnd.uniform(0, 1500) + t * 140) % 1600 + 250
+            cv.text((fx, fy), "*", 70, (255, 255, 255), stroke=3, stroke_c=ink)
+    if o.get("reading"):
+        cv.rect(150, 230, 930, 350, fill=ink, rad=24)
+        cv.text((540, 290), o["reading"], 70, (255, 255, 255))
+
+
+def scene_freeze(cv, t, D, o):
+    """Paisaje que se congela: o.level (0-1) inicial y o.to final; lago, árbol y nieve."""
+    lvl = o.get("level", 0) + (o.get("to", 1) - o.get("level", 0)) * ease(clamp01(t / D))
+    sky = mix((120, 170, 230), (20, 24, 50), min(1, 0.4 + lvl))
+    cv.rect(-60, -60, 1140, 1980, fill=sky)
+    gcol = mix((110, 190, 90), (240, 245, 250), lvl)
+    cv.rect(-60, 1150, 1140, 1980, fill=gcol)
+    cv.line((0, 1150), (1080, 1150), 7, C["ink"])
+    lake = mix((60, 140, 220), (215, 235, 250), clamp01(lvl * 1.4))
+    cv.d.ellipse([*cv.P((520, 1300)), *cv.P((1000, 1480))], fill=lake, outline=C["ink"], width=cv.S(7))
+    if lvl > 0.5:
+        for i in range(5):
+            x = 600 + i * 80
+            cv.line((x, 1330 + (i % 2) * 40), (x + 50, 1400), 4, (170, 200, 230))
+    cv.rect(230, 820, 270, 1180, fill=(110, 75, 50), outline=C["ink"], w=6)
+    leaves = 1 - lvl
+    if leaves > 0.05:
+        for dx, dy, r in ((-90, 0, 120), (60, -60, 130), (100, 40, 110), (0, -150, 120)):
+            cv.circle((250 + dx * leaves, 800 + dy * leaves), r * leaves, fill=mix((60, 160, 70), (240, 245, 250), lvl))
+    for b in ((-80, -40), (90, -30), (0, -120)):
+        cv.line((250, 840), (250 + b[0], 840 + b[1] - 80), 12, (110, 75, 50))
+    rnd = random.Random(9)
+    for i in range(int(60 * lvl)):
+        x = rnd.uniform(0, 1080)
+        y = (rnd.uniform(0, 1900) + t * rnd.uniform(60, 140)) % 1900
+        cv.circle((x, y), rnd.uniform(5, 10), fill=(255, 255, 255))
+    if o.get("caption"):
+        cv.rect(140, 360, 940, 480, fill=C["ink"], rad=24)
+        cv.text((540, 420), o["caption"], 64, (255, 255, 255))
+
+
+def scene_dominoes(cv, t, D, o):
+    """Fichas de dominó que caen en cadena, cada una con un emoji."""
+    items = o.get("items", [["☀️", ""], ["🌱", ""], ["🐄", ""], ["🍔", ""]])
+    n = len(items)
+    ground(cv, 1300)
+    for i, (ic, lab) in enumerate(items):
+        x = 200 + i * (680 / max(n - 1, 1))
+        start = 0.15 + i * 0.16
+        k = ease(clamp01((t / D - start) / 0.12))
+        ang = -80 * k
+        base = (x + 45, 1300)
+        top = add(base, V(ang), 330)
+        left = add(base, V(ang - 90), 90)
+        tl = add(left, V(ang), 330)
+        cv.poly([left, base, top, tl], C["ink"])
+        inner = [add(left, V(ang + 90), 8), add(base, V(ang - 90), 8)]
+        mid = ((top[0] + left[0]) / 2 + 0, (top[1] + left[1]) / 2)
+        cv.poly([add(left, V(ang), 8), add(base, V(ang), 8), add(top, V(ang + 180), 8), add(tl, V(ang + 180), 8)],
+                (250, 248, 238))
+        emoji(cv, ic, ((base[0] + tl[0]) / 2, (base[1] + tl[1]) / 2), 110)
+        if lab:
+            cv.text((x, 1400), lab.upper(), 50, C["ink"])
+
+
+def scene_underground(cv, t, D, o):
+    """Corte del suelo: arriba hielo y noche, abajo una ciudad-cúpula con luces, cultivos y calor volcánico."""
+    cv.rect(-60, -60, 1140, 700, fill=SPACE)
+    rnd = random.Random(8)
+    for i in range(30):
+        cv.circle((rnd.uniform(0, 1080), rnd.uniform(0, 650)), 3, fill=(255, 255, 235))
+    cv.rect(-60, 650, 1140, 760, fill=(225, 238, 250), outline=C["ink"], w=6)
+    cv.rect(-60, 760, 1140, 1980, fill=(120, 85, 60))
+    cv.d.ellipse([*cv.P((150, 900)), *cv.P((930, 1500))], fill=(255, 238, 190), outline=C["ink"], width=cv.S(8))
+    for i in range(5):
+        x = 260 + i * 140
+        cv.line((x, 1000), (x, 1060), 6, C["ink"])
+        glow = 0.6 + 0.4 * math.sin(t * 3 + i)
+        cv.circle((x, 1075), 22, fill=mix((255, 240, 160), (255, 255, 255), glow))
+    for i in range(6):
+        x = 300 + i * 95
+        cv.rect(x, 1330, x + 60, 1380, fill=(120, 80, 50))
+        emoji(cv, "🌱", (x + 30, 1290), 70)
+    for i in range(3):
+        x = (300 + i * 200 + t * 60) % 700 + 220
+        figure(cv, (x, 1220), walk_pose(t * 6 + i), h=150, facing=1, ground=1330)
+    for i in range(4):
+        y = 1600 + i * 70
+        pts = [(x_, y + 18 * math.sin(x_ / 70 + t * 3 + i)) for x_ in range(0, 1100, 40)]
+        cv.path(pts, 10, mix((230, 80, 40), (255, 180, 60), (i % 2)))
+    cv.text((540, 1550), o.get("caption", "CALOR DE LA TIERRA"), 60, (255, 230, 160))
+
+
+def scene_vent(cv, t, D, o):
+    """Fondo del mar bajo una tapa de hielo: chimenea volcánica que humea y microbios que bailan."""
+    cv.rect(-60, -60, 1140, 1980, fill=(20, 40, 80))
+    cv.rect(-60, 300, 1140, 470, fill=(225, 240, 252), outline=C["ink"], w=6)
+    cv.text((540, 385), "HIELO", 70, C["ink"])
+    cv.rect(-60, 1600, 1140, 1980, fill=(60, 50, 50))
+    cv.poly([(420, 1600), (500, 1150), (580, 1150), (660, 1600)], (80, 60, 55))
+    for i in range(10):
+        ph = (t * 0.5 + i / 10) % 1
+        cv.circle((540 + 40 * math.sin(ph * 7 + i), 1130 - ph * 500), 40 + 60 * ph,
+                  fill=mix((90, 80, 80), (20, 40, 80), ph))
+    rnd = random.Random(6)
+    for i in range(14):
+        x = rnd.uniform(150, 930) + 15 * math.sin(t * 3 + i)
+        y = rnd.uniform(1250, 1560) + 10 * math.cos(t * 2 + i)
+        cv.d.ellipse([*cv.P((x - 26, y - 14)), *cv.P((x + 26, y + 14))], fill=(130, 220, 120),
+                     outline=C["ink"], width=cv.S(4))
+        cv.circle((x + 8, y - 3), 4, fill=C["ink"])
+    cv.text((540, 560), o.get("caption", "VIDA SIN SOL"), 70, (200, 255, 190))
+
+
+def scene_bodyclock(cv, t, D, o):
+    """Reloj interno: el sol de la esfera desaparece y las agujas se vuelven locas."""
+    c = (540, 900)
+    lost = o.get("lost", True)
+    cv.circle(c, 330, fill=C["soft"], outline=C["ink"], w=18)
+    if not lost:
+        emoji(cv, "☀️", (540, 660), 120)
+    else:
+        cv.text((540, 660), "?", 120, C["grey"])
+    emoji(cv, "🌙", (540, 1140), 110)
+    sp = 1 if not lost else 1 + 4 * abs(math.sin(t * 0.9))
+    cv.line(c, add(c, V(t * 40 * sp), 230), 18, C["ink"])
+    cv.line(c, add(c, V(t * 13 * sp + 120), 160), 24, C["ink"])
+    cv.circle(c, 22, fill=C["red"])
+    if lost:
+        for i, s_ in enumerate(("Z", "z", "Z")):
+            ph = (t * 0.7 + i * 0.33) % 1
+            cv.text((830 + 40 * i, 560 - 200 * ph), s_, 70 + 20 * i, mix(C["ink"], C["bg"], ph))
+    cv.text((540, 1400), o.get("caption", "TU RELOJ INTERNO"), 64, C["ink"])
+
+
+def scene_giant(cv, t, D, o):
+    """El Sol se hincha hasta gigante roja y después se encoge a enana blanca."""
+    space_bg(cv, t)
+    k = clamp01(t / D)
+    if k < 0.65:
+        g = ease(k / 0.65)
+        R = 160 + 520 * g
+        col = mix((255, 205, 50), (230, 70, 40), g)
+        cv.circle((540, 900), R * 1.04, fill=mix(col, (0, 0, 0), 0.2))
+        cv.circle((540, 900), R, fill=col)
+        lab = "GIGANTE ROJA" if g > 0.6 else "EL SOL"
+    else:
+        g = ease((k - 0.65) / 0.35)
+        R = 680 * (1 - g) + 40 * g
+        cv.circle((540, 900), R, fill=mix((230, 70, 40), (235, 240, 255), g))
+        lab = "ENANA BLANCA" if g > 0.6 else "GIGANTE ROJA"
+    cv.rect(220, 300, 860, 420, fill=C["ink"], rad=24)
+    cv.text((540, 360), lab, 70, (255, 230, 160))
+
+
+def scene_airsnow(cv, t, D, o):
+    """El aire, tan frío que cae al suelo como nieve: moléculas que se vuelven copos."""
+    space_bg(cv, t, dim=0.2)
+    cv.rect(-60, 1400, 1140, 1980, fill=(230, 240, 250))
+    cv.line((0, 1400), (1080, 1400), 7, C["ink"])
+    rnd = random.Random(12)
+    k = clamp01(t / D)
+    for i in range(40):
+        x = rnd.uniform(40, 1040)
+        y0 = rnd.uniform(300, 1300)
+        fall = clamp01(k * 1.6 - rnd.uniform(0, 0.6))
+        y = y0 + (1380 - y0) * ease(fall)
+        if fall < 0.5:
+            cv.circle((x - 12, y), 14, fill=(130, 180, 255), outline=C["ink"], w=3)
+            cv.circle((x + 12, y), 14, fill=(130, 180, 255), outline=C["ink"], w=3)
+        else:
+            for a in range(0, 180, 60):
+                cv.line(add((x, y), V(a), 20), add((x, y), V(a + 180), 20), 5, (255, 255, 255))
+    pile = 1400 - 60 * k
+    cv.rect(-60, pile, 1140, 1405, fill=(250, 252, 255))
+    cv.text((540, 1480), o.get("caption", "NIEVE DE AIRE"), 76, C["ink"])
+
+
+def scene_stopwatch(cv, t, D, o):
+    """Cuenta atrás de 8 minutos con una persona tan tranquila tomando un helado."""
+    ground(cv)
+    figure(cv, (380, 0), dict(aR1=70, aR2=140), facing=1, ground=GROUND, face="happy")
+    emoji(cv, "🍦", (520, 970), 110)
+    secs = max(0, 480 - int(t / D * 90))
+    clock(cv, (760, 640), 170, secs / 60 * 60 / 60 * 60)
+    cv.rect(560, 860, 960, 980, fill=C["ink"], rad=20)
+    cv.text((760, 920), f"{secs // 60}:{secs % 60:02d}", 80, (255, 230, 120))
+    cv.text((540, 1500), o.get("caption", "NI TE ENTERAS"), 70, C["ink"])
+
+
 SCENES = {k[6:]: v for k, v in globals().items() if k.startswith("scene_")}
 SCENES["sad"] = scene_walk
 
@@ -1240,7 +1589,7 @@ def label_box(cv, txt, y, size=96):
     cv.text((540, y), txt, size, C["gold"])
 
 
-ZOOM = dict(xray=1.0, melt=1.05, crawl=1.0, shield=1.0, factory=1.0, ear=1.0, octopus=1.0, send=1.0, think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
+ZOOM = dict(sun=1.0, light=1.0, orbit=1.0, sky=1.0, thermo=1.0, freeze=1.0, dominoes=1.0, underground=1.0, vent=1.0, bodyclock=1.0, giant=1.0, airsnow=1.0, stopwatch=1.0, xray=1.0, melt=1.05, crawl=1.0, shield=1.0, factory=1.0, ear=1.0, octopus=1.0, send=1.0, think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
 
 
 def render(o, t, D, z=1.0):
@@ -1685,6 +2034,8 @@ def land_frame(img, ci, chapters):
         side = Image.new("RGB", (LW, LH), bg)
         d = ImageDraw.Draw(side)
         ink, gold, grey = C["ink"], C["gold"], C["grey"]
+        if sum(bg) < 300:
+            ink, gold, grey = (245, 245, 250), (255, 205, 60), (120, 125, 150)
         if 0 <= ci < len(chapters):
             f = load_font(FONT, 92)
             words, rows, cur = chapters[ci].upper().split(), [], ""
@@ -1719,7 +2070,7 @@ def land_frame(img, ci, chapters):
     x = (LW - pw) // 2
     out.paste(panel, (x, 0))
     d = ImageDraw.Draw(out)
-    d.rectangle((x - 4, -10, x + pw + 3, LH + 10), outline=C["ink"], width=8)
+    d.rectangle((x - 4, -10, x + pw + 3, LH + 10), outline=C["ink"] if sum(bg) >= 300 else (90, 95, 130), width=8)
     return out
 
 
