@@ -1579,6 +1579,195 @@ def scene_stopwatch(cv, t, D, o):
     cv.text((540, 1500), o.get("caption", "NI TE ENTERAS"), 70, C["ink"])
 
 
+# ---------------------------------------------------------------- escenas IA y agua
+WATER = (70, 160, 235)
+
+
+def drop(cv, c, r, col=WATER):
+    cv.poly([(c[0], c[1] - r * 1.7), (c[0] - r * 0.9, c[1] - r * 0.2), (c[0] + r * 0.9, c[1] - r * 0.2)], C["ink"])
+    cv.circle(c, r + 5, fill=C["ink"])
+    cv.poly([(c[0], c[1] - r * 1.55), (c[0] - r * 0.78, c[1] - r * 0.2), (c[0] + r * 0.78, c[1] - r * 0.2)], col)
+    cv.circle(c, r, fill=col)
+    cv.circle((c[0] - r * 0.35, c[1] - r * 0.25), r * 0.22, fill=(255, 255, 255))
+
+
+def glass(cv, x, y, w, h, level, col=WATER):
+    """Vaso (o botella si o.bottle) con nivel de agua 0-1."""
+    ink = C["ink"]
+    cv.rect(x, y + h * (1 - level), x + w, y + h, fill=col, rad=10)
+    k = math.sin(CUR_T * 5) * 6
+    if level > 0.03:
+        cv.path([(x + 8, y + h * (1 - level) + k), (x + w / 2, y + h * (1 - level) - k), (x + w - 8, y + h * (1 - level) + k)],
+                8, mix(col, (255, 255, 255), 0.5))
+    cv.rect(x, y, x + w, y + h, outline=ink, w=9, rad=10)
+
+
+def scene_chat(cv, t, D, o):
+    """Móvil con un chat de IA: la pregunta, la IA escribe, y a su lado un vaso que se vacía a sorbos."""
+    ink = C["ink"]
+    cv.rect(190, 380, 760, 1460, fill=ink, rad=60)
+    cv.rect(215, 440, 735, 1400, fill=(245, 247, 252), rad=36)
+    cv.rect(400, 405, 550, 425, fill=(60, 60, 70), rad=10)
+    q = o.get("q", "¿Cómo hago una tortilla?")
+    cv.rect(245, 520, 720, 640, fill=WATER, rad=30)
+    cv.text((482, 580), q, 38, (255, 255, 255))
+    if t > 0.6:
+        cv.rect(235, 690, 640, 800, fill=(225, 228, 238), rad=30)
+        dots = int(t * 3) % 4
+        if t < D * 0.55:
+            for i in range(3):
+                cv.circle((330 + i * 55, 745), 14 if i < dots else 8, fill=(120, 120, 140))
+        else:
+            cv.text((437, 745), o.get("a", "¡Claro! Primero…"), 40, ink)
+    lvl = 0.9 - 0.35 * clamp01((t / D - 0.4) / 0.5)
+    glass(cv, 800, 980, 190, 300, lvl)
+    if t / D > 0.4:
+        for i in range(3):
+            ph = (t * 1.2 + i / 3) % 1
+            drop(cv, (895 + 20 * math.sin(i * 2), 950 - ph * 300), 18 * (1 - ph) + 4)
+    emoji(cv, "🤖", (895, 830), 120)
+
+
+def server_rack(cv, x, y, w, h, t, seed=0):
+    ink = C["ink"]
+    cv.rect(x, y, x + w, y + h, fill=(40, 44, 60), outline=ink, w=6, rad=8)
+    rnd = random.Random(seed)
+    for j in range(int(h // 60)):
+        yy = y + 18 + j * 60
+        cv.rect(x + 14, yy, x + w - 14, yy + 42, fill=(60, 66, 88), rad=4)
+        for k in range(3):
+            on = math.sin(t * rnd.uniform(4, 11) + rnd.uniform(0, 6)) > 0
+            cv.circle((x + w - 40 - k * 26, yy + 21), 7, fill=(90, 230, 120) if on else (40, 90, 60))
+
+
+def scene_datacenter(cv, t, D, o):
+    """Nave de servidores que se calientan: luces parpadeando, ondas de calor y termómetro al rojo."""
+    cv.rect(-60, 330, 1140, 1600, fill=(210, 214, 228))
+    cv.poly([(-60, 330), (540, 180), (1140, 330)], (150, 155, 175))
+    for i in range(4):
+        server_rack(cv, 90 + i * 235, 560, 190, 760, t, seed=i)
+    heat = clamp01(t / (D * 0.7))
+    for i in range(6):
+        x = 150 + i * 160
+        pts = [(x + 25 * math.sin(yy / 40 + t * 6 + i), yy) for yy in range(520, 380, -14)]
+        cv.path(pts, 9, mix((240, 160, 60), (230, 60, 50), heat))
+    emoji(cv, "🔥" if heat > 0.6 else "🌡️", (930, 440), 130)
+    cv.rect(-60, 1320, 1140, 1600, fill=(120, 124, 140))
+    cv.text((540, 1460), o.get("caption", "TRABAJAN SIN PARAR"), 64, (255, 255, 255))
+
+
+def scene_cooling(cv, t, D, o):
+    """Torre de refrigeración: el agua caliente cae en cascada, un ventilador sopla y sube vapor."""
+    ink = C["ink"]
+    cv.poly([(250, 1450), (330, 620), (750, 620), (830, 1450)], (225, 228, 238))
+    cv.path([(250, 1450), (330, 620), (750, 620), (830, 1450)], 10, ink)
+    for i in range(7):
+        x = 380 + i * 52
+        for j in range(9):
+            ph = (t * 2.2 + j / 9 + i * 0.13) % 1
+            y = 700 + ph * 680
+            cv.line((x, y), (x, y + 34), 9, WATER)
+    fan_c = (540, 560)
+    cv.circle(fan_c, 120, fill=(200, 205, 220), outline=ink, w=8)
+    for k in range(4):
+        a = k * 90 + t * 900
+        cv.poly([fan_c, add(fan_c, V(a - 18), 110), add(fan_c, V(a + 18), 110)], (110, 115, 135))
+    cv.circle(fan_c, 20, fill=ink)
+    for i in range(7):
+        ph = (t * 0.45 + i / 7) % 1
+        x = 540 + 160 * math.sin(i * 1.7) * ph
+        cv.circle((x, 420 - ph * 280), 50 + 70 * ph, fill=mix((235, 238, 245), C["bg"], ph))
+    if o.get("refill"):
+        cv.rect(860, 1150, 1020, 1190, fill=(160, 165, 180), outline=ink, w=6)
+        cv.rect(860, 1150, 900, 1250, fill=(160, 165, 180), outline=ink, w=6)
+        for j in range(5):
+            ph = (t * 2 + j / 5) % 1
+            drop(cv, (880, 1270 + ph * 150), 14)
+        cv.text((940, 1110), "+AGUA", 50, ink)
+    cv.text((540, 1505), o.get("caption", "SE EVAPORA"), 70, ink)
+
+
+def scene_bottle(cv, t, D, o):
+    """Botella de medio litro que baja con un contador de preguntas."""
+    ink = C["ink"]
+    n_max = o.get("n", 50)
+    k = clamp01(t / (D * 0.85))
+    lvl = 1 - k
+    x, y, w, h = 380, 560, 320, 820
+    cv.rect(x + 100, y - 140, x + w - 100, y + 10, fill=(240, 245, 255), outline=ink, w=8, rad=10)
+    cv.rect(x + 90, y - 180, x + w - 90, y - 130, fill=(60, 140, 230), outline=ink, w=6, rad=8)
+    glass(cv, x, y, w, h, 0.95 * lvl)
+    cv.rect(x - 10, y + 300, x + w + 10, y + 420, fill=(255, 255, 255), outline=ink, w=6)
+    cv.text((x + w / 2, y + 360), "0,5 L", 70, ink)
+    q = int(round(n_max * k))
+    cv.rect(220, 1440, 860, 1560, fill=ink, rad=24)
+    cv.text((540, 1500), f"{q} PREGUNTAS", 72, (255, 230, 120))
+    if k < 1:
+        bub = int(t * 4) % 2
+        emoji(cv, "💬", (830 + 20 * bub, 520 - 20 * bub), 110)
+
+
+def scene_swarm(cv, t, D, o):
+    """Rejilla de móviles que aparecen por oleadas, cada uno con su gotita."""
+    ink = C["ink"]
+    k = clamp01(t / (D * 0.8))
+    cols, rows = 6, 8
+    n = int(cols * rows * (0.1 + 0.9 * k))
+    for i in range(n):
+        cx = 140 + (i % cols) * 160
+        cy = 420 + (i // cols) * 135
+        cv.rect(cx - 36, cy - 55, cx + 36, cy + 55, fill=ink, rad=10)
+        cv.rect(cx - 28, cy - 45, cx + 28, cy + 40, fill=(235, 240, 250), rad=6)
+        ph = (t * 1.5 + i * 0.37) % 1
+        drop(cv, (cx + 46, cy - 20 + ph * 40), 9)
+    cv.rect(160, 1440, 920, 1550, fill=ink, rad=24)
+    cv.text((540, 1495), o.get("caption", "× MILLONES"), 76, (255, 230, 120))
+
+
+def scene_desert(cv, t, D, o):
+    """Desierto con sol, cactus, un centro de datos y un grifo del pueblo que gotea."""
+    ink = C["ink"]
+    cv.rect(-60, -60, 1140, 1120, fill=(255, 214, 150))
+    cv.circle((850, 470), 110, fill=(255, 190, 60))
+    cv.rect(-60, 1100, 1140, 1980, fill=(232, 180, 110))
+    cv.line((0, 1100), (1080, 1100), 7, ink)
+    for x, s in ((150, 1.0), (980, 0.7)):
+        cv.rect(x - 28 * s, 1100 - 260 * s, x + 28 * s, 1100, fill=(80, 160, 90), outline=ink, w=6, rad=26)
+        cv.rect(x - 90 * s, 1100 - 180 * s, x - 28 * s, 1100 - 140 * s, fill=(80, 160, 90), outline=ink, w=6, rad=18)
+        cv.rect(x - 90 * s, 1100 - 240 * s, x - 50 * s, 1100 - 150 * s, fill=(80, 160, 90), outline=ink, w=6, rad=18)
+    cv.rect(380, 820, 900, 1100, fill=(200, 205, 220), outline=ink, w=8)
+    for i in range(5):
+        on = math.sin(t * 7 + i) > 0
+        cv.circle((440 + i * 100, 880), 14, fill=(90, 230, 120) if on else (60, 120, 80))
+    cv.text((640, 990), "DATOS", 60, ink)
+    cv.rect(180, 1280, 330, 1320, fill=(150, 155, 170), outline=ink, w=6)
+    cv.rect(180, 1280, 220, 1400, fill=(150, 155, 170), outline=ink, w=6)
+    if int(t * 1.2) % 2 == 0:
+        drop(cv, (200, 1440 + (t * 120) % 60), 13)
+    cv.text((255, 1230), "GRIFO", 46, ink)
+    cv.text((640, 1490), o.get("caption", "ZONAS SECAS"), 70, ink)
+
+
+def scene_rain(cv, t, D, o):
+    """El vapor viaja en una nube y llueve… lejos del centro de datos."""
+    ink = C["ink"]
+    cv.rect(-60, 1200, 540, 1980, fill=(232, 180, 110))
+    cv.rect(540, 1200, 1140, 1980, fill=(110, 190, 100))
+    cv.line((0, 1200), (1080, 1200), 7, ink)
+    cv.rect(110, 1000, 380, 1200, fill=(200, 205, 220), outline=ink, w=7)
+    cv.text((245, 1100), "IA", 60, ink)
+    k = ease(clamp01(t / (D * 0.6)))
+    cx = 245 + (800 - 245) * k
+    cloud(cv, (cx, 600), 1.3, (235, 238, 248))
+    if k > 0.95:
+        rain(cv, (800, 600), t, 1.4)
+    else:
+        for i in range(4):
+            ph = (t * 0.8 + i / 4) % 1
+            cv.circle((245 + 30 * math.sin(i * 3), 980 - ph * 330), 22 + 26 * ph, fill=mix((235, 238, 248), C["bg"], ph))
+    cv.text((540, 1460), o.get("caption", "LLUEVE… EN OTRO SITIO"), 64, ink)
+
+
 SCENES = {k[6:]: v for k, v in globals().items() if k.startswith("scene_")}
 SCENES["sad"] = scene_walk
 
@@ -1589,7 +1778,7 @@ def label_box(cv, txt, y, size=96):
     cv.text((540, y), txt, size, C["gold"])
 
 
-ZOOM = dict(sun=1.0, light=1.0, orbit=1.0, sky=1.0, thermo=1.0, freeze=1.0, dominoes=1.0, underground=1.0, vent=1.0, bodyclock=1.0, giant=1.0, airsnow=1.0, stopwatch=1.0, xray=1.0, melt=1.05, crawl=1.0, shield=1.0, factory=1.0, ear=1.0, octopus=1.0, send=1.0, think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
+ZOOM = dict(chat=1.0, datacenter=1.0, cooling=1.0, bottle=1.0, swarm=1.0, desert=1.0, rain=1.0, sun=1.0, light=1.0, orbit=1.0, sky=1.0, thermo=1.0, freeze=1.0, dominoes=1.0, underground=1.0, vent=1.0, bodyclock=1.0, giant=1.0, airsnow=1.0, stopwatch=1.0, xray=1.0, melt=1.05, crawl=1.0, shield=1.0, factory=1.0, ear=1.0, octopus=1.0, send=1.0, think=1.05, title=1.0, icons=1.0, versus=1.0, chart=1.0, flow=1.0, drain=1.0, question=1.0, climb=1.0, graph=1.0, push=1.05, crowd=1.08, money=1.08, sleep=1.12, clock=1.0, lift=1.15)
 
 
 def render(o, t, D, z=1.0):
